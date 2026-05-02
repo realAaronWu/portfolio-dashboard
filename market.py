@@ -1,3 +1,4 @@
+import concurrent.futures
 import requests
 import time
 import threading
@@ -108,13 +109,18 @@ def _get_month_open(closes, timestamps):
 
 
 def fetch_all_tickers(tickers):
-    """Fetch data for multiple tickers with rate limiting."""
+    """Fetch data for multiple tickers in parallel."""
     results = {}
-    for ticker in tickers:
-        data = fetch_ticker_data(ticker)
-        if data:
-            results[ticker] = data
-        time.sleep(0.25)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as pool:
+        future_map = {pool.submit(fetch_ticker_data, t): t for t in tickers}
+        for future in concurrent.futures.as_completed(future_map):
+            ticker = future_map[future]
+            try:
+                data = future.result()
+                if data:
+                    results[ticker] = data
+            except Exception:
+                pass
     return results
 
 

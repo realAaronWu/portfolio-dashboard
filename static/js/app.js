@@ -60,16 +60,24 @@ function showToast(msg, type='success') {
 // ========================  DASHBOARD PAGE  ================================
 // ---------------------------------------------------------------------------
 
-// On page load: use cached data (no cache clear). Refresh button clears cache.
+// Progressive load: render holdings table instantly from portfolio data,
+// then fetch market data in background and patch prices/signals in-place.
+let _dashPf = null;
+
 async function loadDashboard() {
     const table = $('#market-table');
     if (!table) return;
-    showLoading();
+
+    // Step 1: Render table skeleton from portfolio data (instant, no network wait)
     try {
-        const [mkt, pf] = await Promise.all([API.getMarketData(), API.getPortfolio()]);
-        renderDashboard(mkt, pf);
-    } catch(e) { console.error(e); showToast('Failed to load market data','error'); }
-    finally { hideLoading(); }
+        _dashPf = await API.getPortfolio();
+        renderDashboardSkeleton(_dashPf);
+    } catch(e) { console.error(e); return; }
+
+    // Step 2: Fetch market data in background and patch cells
+    API.getMarketData().then(mkt => {
+        patchDashboardMarket(mkt, _dashPf);
+    }).catch(e => { console.warn('Market fetch failed:', e); });
 }
 
 async function refreshMarketData() {
@@ -78,43 +86,79 @@ async function refreshMarketData() {
     showLoading();
     try {
         await API.clearCache();
-        const [mkt, pf] = await Promise.all([API.getMarketData(), API.getPortfolio()]);
-        renderDashboard(mkt, pf);
+        const mkt = await API.getMarketData();
+        if (!_dashPf) _dashPf = await API.getPortfolio();
+        patchDashboardMarket(mkt, _dashPf);
         showToast('Market data refreshed');
-    } catch(e) { console.error(e); showToast('Failed to load market data','error'); }
+    } catch(e) { console.error(e); showToast('Failed to refresh','error'); }
     finally { hideLoading(); }
 }
 
-function renderDashboard(mkt, pf) {
-    const bucketMap = {};
-    const holdingMap = {};  // ticker -> {actual_shares, avg_price}
+function renderDashboardSkeleton(pf) {
     const bucketNames = { tech_stocks:'Tech Stocks', growth_etfs:'Growth ETFs', defensive_etfs:'Defensive ETFs', gold_silver:'Gold & Silver', hedges:'Hedges' };
-    for (const [bk, bd] of Object.entries(pf.buckets||{})) {
-        for (const h of bd.holdings||[]) {
-            bucketMap[h.ticker] = bk;
-            holdingMap[h.ticker] = h;
-        }
-    }
-    for (const o of pf.options||[]) { if(o.underlying) bucketMap[o.underlying]='hedges'; }
-
-    const data = mkt.data || {};
+    const bucketOrder = ['tech_stocks','growth_etfs','defensive_etfs','gold_silver','hedges'];
     const tbody = $('#market-table tbody');
     if (!tbody) return;
     tbody.innerHTML = '';
 
-    const strSignals=[], btdSignals=[];
-    const bucketOrder = ['tech_stocks','growth_etfs','defensive_etfs','gold_silver','hedges'];
-    const sorted = Object.keys(data).sort((a,b)=>{
-        const ba=bucketOrder.indexOf(bucketMap[a]||''), bb=bucketOrder.indexOf(bucketMap[b]||'');
-        if(ba!==bb) return ba-bb;
-        return a.localeCompare(b);
-    });
+    // Collect all tickers in bucket order
+    const rows = [];
+    for (const bk of bucketOrder) {
+        const bd = pf.buckets?.[bk];
+        if (!bd) continue;
+        for (const h of bd.holdings||[]) {
+            rows.push({ ticker: h.ticker, bucket: bk, shares: parseFloat(h.actual_shares)||0, avg: parseFloat(h.avg_price)||0 });
+        }
+    }
+    // Add option underlyings
+    for (const o of pf.options||[]) {
+        if (o.underlying && !rows.find(r=>r.ticker===o.underlying)) {
+            rows.push({ ticker: o.underlying, bucket: 'hedges', shares: 0, avg: 0 });
+        }
+    }
 
-    for (const ticker of sorted) {
+    for (const r of rows) {
+        const tr = document.createElement('tr');
+        tr.dataset.bucket = r.bucket;
+        tr.dataset.ticker = r.ticker;
+        tr.dataset.signal = 'hold';
+        tr.innerHTML = `
+            <td class="text-sm">${bucketNames[r.bucket]||r.bucket}</td>
+            <td><strong><a href="/history?ticker=${r.ticker}" class="ticker-link">${r.ticker}</a></strong></td>
+            <td class="num mkt-price">—</td>
+            <td class="num">${r.shares||'—'}</td>
+            <td class="num">${r.avg?fmt$(r.avg):'—'}</td>
+            <td class="num mkt-value">—</td>
+            <td class="num mkt-pnl">—</td>
+            <td class="num mkt-pnl-pct">—</td>
+            <td class="num mkt-div-sma">—</td>
+            <td class="num mkt-div-ema">—</td>
+            <td class="num mkt-chg-1m">—</td>
+            <td class="mkt-signal"><span class="badge badge-hold">...</span></td>
+            <td class="text-sm mkt-action">Loading…</td>
+        `;
+        tbody.appendChild(tr);
+    }
+}
+
+function patchDashboardMarket(mkt, pf) {
+    const data = mkt.data || {};
+    const holdingMap = {};
+    for (const [bk, bd] of Object.entries(pf.buckets||{})) {
+        for (const h of bd.holdings||[]) holdingMap[h.ticker] = h;
+    }
+
+    const strSignals=[], btdSignals=[];
+
+    $$('#market-table tbody tr').forEach(row => {
+        const ticker = row.dataset.ticker;
         const d = data[ticker];
-        if (d.error) continue;
-        const bucket = bucketMap[ticker]||'';
-        const sig = d.signal||{};
+        if (!d || d.error) {
+            row.querySelector('.mkt-action').textContent = d?.error || '—';
+            row.querySelector('.mkt-signal').innerHTML = '<span class="badge badge-hold">—</span>';
+            return;
+        }
+
         const h = holdingMap[ticker];
         const shares = parseFloat(h?.actual_shares)||0;
         const avg    = parseFloat(h?.avg_price)||0;
@@ -122,30 +166,23 @@ function renderDashboard(mkt, pf) {
         const cost   = shares * avg;
         const pnl    = shares>0 ? value - cost : null;
         const pnlPct = cost>0&&pnl!=null ? (pnl/cost)*100 : null;
+        const sig    = d.signal||{};
 
-        const tr = document.createElement('tr');
-        tr.className = signalRowCls(sig);
-        tr.dataset.bucket = bucket;
-        tr.dataset.signal = (sig.action||'hold').toLowerCase();
-        tr.innerHTML = `
-            <td class="text-sm">${bucketNames[bucket]||bucket}</td>
-            <td><strong><a href="/history?ticker=${ticker}" class="ticker-link">${ticker}</a></strong></td>
-            <td class="num">${fmt$(d.price)}</td>
-            <td class="num">${shares||'—'}</td>
-            <td class="num">${avg?fmt$(avg):'—'}</td>
-            <td class="num">${value?fmt$(value):'—'}</td>
-            <td class="num"><span class="${clsPct(pnl)}">${pnl!=null?fmt$(pnl):'—'}</span></td>
-            <td class="num"><span class="${clsPct(pnlPct)}">${pnlPct!=null?fmtPct(pnlPct):'—'}</span></td>
-            <td class="num"><span class="${clsPct(d.div_sma)}">${fmtPct(d.div_sma)}</span></td>
-            <td class="num"><span class="${clsPct(d.div_ema)}">${fmtPct(d.div_ema)}</span></td>
-            <td class="num"><span class="${clsPct(d.chg_1m)}">${fmtPct(d.chg_1m)}</span></td>
-            <td>${signalBadge(sig)}</td>
-            <td class="text-sm">${sig.label||''}</td>
-        `;
-        tbody.appendChild(tr);
+        row.className = signalRowCls(sig);
+        row.dataset.signal = (sig.action||'hold').toLowerCase();
+        row.querySelector('.mkt-price').textContent = fmt$(d.price);
+        row.querySelector('.mkt-value').textContent = value ? fmt$(value) : '—';
+        row.querySelector('.mkt-pnl').innerHTML = `<span class="${clsPct(pnl)}">${pnl!=null?fmt$(pnl):'—'}</span>`;
+        row.querySelector('.mkt-pnl-pct').innerHTML = `<span class="${clsPct(pnlPct)}">${pnlPct!=null?fmtPct(pnlPct):'—'}</span>`;
+        row.querySelector('.mkt-div-sma').innerHTML = `<span class="${clsPct(d.div_sma)}">${fmtPct(d.div_sma)}</span>`;
+        row.querySelector('.mkt-div-ema').innerHTML = `<span class="${clsPct(d.div_ema)}">${fmtPct(d.div_ema)}</span>`;
+        row.querySelector('.mkt-chg-1m').innerHTML = `<span class="${clsPct(d.chg_1m)}">${fmtPct(d.chg_1m)}</span>`;
+        row.querySelector('.mkt-signal').innerHTML = signalBadge(sig);
+        row.querySelector('.mkt-action').textContent = sig.label||'';
+
         if (sig.action==='STR') strSignals.push({ticker, label:sig.label, div:d.div_sma});
         if (sig.action==='BTD') btdSignals.push({ticker, label:sig.label, div:d.div_sma});
-    }
+    });
 
     const strEl = $('#str-signals .signal-list');
     if (strEl) {
