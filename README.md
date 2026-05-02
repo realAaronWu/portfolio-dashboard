@@ -42,7 +42,8 @@ A local-first web dashboard for tracking and managing a multi-bucket investment 
 ### Data Protection
 - **Atomic writes**: `tempfile` + `os.replace()` prevents corruption on crash
 - **Rolling backups**: Last 50 snapshots saved automatically in `data/backups/`
-- **Git auto-commit**: Every mutation gets a descriptive commit message (if git is configured)
+- **Git auto-commit**: Every mutation auto-commits to the `data/` git repo with a descriptive message
+- **Auto-push**: Optionally push every commit to your private remote (see [Data Repo Setup](#data-repo-setup))
 
 ## Quick Start
 
@@ -57,12 +58,9 @@ A local-first web dashboard for tracking and managing a multi-bucket investment 
 git clone git@github.com:realAaronWu/portfolio-dashboard.git
 cd portfolio-dashboard
 
-# Create the data directory
+# Create the data directory and copy sample files
 mkdir -p data
-
-# Copy sample files as starting point
-cp data.sample/portfolio.json data/portfolio.json
-cp data.sample/strategy_defaults.json data/strategy_defaults.json
+cp data.sample/* data/
 ```
 
 ### Run
@@ -78,16 +76,57 @@ python app.py
 
 Open [http://127.0.0.1:5000](http://127.0.0.1:5000) in your browser.
 
-### Using a Private Data Repo
+### Data Repo Setup
 
-To keep your personal portfolio data separate and version-controlled privately:
+Your personal portfolio data lives in the `data/` directory, which is gitignored by this project. To version-control and back up your data privately, set up `data/` as its own git repo pointing to your own private remote.
+
+#### Option A: Start fresh with a new private repo
 
 ```bash
-# Clone your private data repo into the data/ directory
-git clone git@github.com:<your-user>/portfolio.git data
+# 1. Create a PRIVATE repo on GitHub (e.g. your-user/portfolio)
 
-# The app reads from data/portfolio.json and data/strategy.json automatically
+# 2. Initialize data/ as a git repo
+cd data
+git init
+git remote add origin git@github.com:<your-user>/portfolio.git
+
+# 3. Enable auto-push (optional but recommended)
+echo '{ "auto_push": true }' > config.json
+
+# 4. Add .gitignore to exclude backups
+echo 'backups/' > .gitignore
+
+# 5. Initial commit and push
+git add -A
+git commit -m "Initial portfolio data"
+git branch -M main
+git push -u origin main
 ```
+
+#### Option B: Clone an existing private data repo
+
+```bash
+# If you already have a data repo (e.g. from another machine)
+rm -rf data
+git clone git@github.com:<your-user>/portfolio.git data
+```
+
+#### How it works
+
+Every time you edit holdings, record a trade, or save strategy changes through the UI, the app will:
+
+1. **Atomic write** -- write to a temp file, then `os.replace()` into the target
+2. **Rolling backup** -- copy the previous version to `data/backups/` (keeps last 50)
+3. **Git auto-commit** -- `git add` + `git commit` in the `data/` repo with a descriptive message (e.g. `"Trade: BUY 10 NVDA @ $135.20"`)
+4. **Auto-push** (if enabled) -- `git push` to your private remote
+
+To enable/disable auto-push, edit `data/config.json`:
+
+```json
+{ "auto_push": true }
+```
+
+Set `false` (or delete the file) to commit locally only. You can always push manually with `cd data && git push`.
 
 ## Project Structure
 
@@ -105,14 +144,16 @@ portfolio-dashboard/
 │   ├── history.html        # Candlestick charts with MA overlays
 │   ├── strategy.html       # Strategy parameter tuning
 │   └── summary.html        # Allocation analysis + scenarios
-├── data/                   # User data (gitignored)
+├── data/                   # User data (gitignored, its own git repo)
 │   ├── portfolio.json      # Holdings, trades, capital
 │   ├── strategy.json       # Active strategy config
 │   ├── strategy_defaults.json  # Default strategy template
+│   ├── config.json         # App config (auto_push, etc.)
 │   └── backups/            # Rolling backup snapshots
 ├── data.sample/            # Sample templates for fresh setup
 │   ├── portfolio.json
-│   └── strategy_defaults.json
+│   ├── strategy_defaults.json
+│   └── config.json
 ├── .gitignore
 └── README.md
 ```

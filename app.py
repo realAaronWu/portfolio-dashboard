@@ -81,23 +81,49 @@ def _write_portfolio(data, commit_msg=None):
 
         # --- Git auto-commit (fire and forget, non-blocking) ---
         if commit_msg:
-            _git_commit(commit_msg)
+            _git_commit_data(commit_msg, PORTFOLIO_PATH)
 
 
-def _git_commit(message):
-    """Stage portfolio.json and commit. Silently no-op if git isn't set up."""
-    repo_dir = os.path.dirname(__file__)
+def _git_commit_data(message, *paths):
+    """Stage and commit files inside the data/ repo, optionally auto-push.
+
+    The data/ directory is expected to be its own git repository
+    (e.g. cloned from a private remote).  If it isn't a git repo
+    this silently does nothing.
+
+    Auto-push is controlled by data/config.json:
+        { "auto_push": true }
+    """
+    if not os.path.isdir(os.path.join(DATA_DIR, ".git")):
+        return  # data/ is not a git repo — skip
     try:
+        for p in paths:
+            subprocess.run(
+                ["git", "add", os.path.basename(p)],
+                cwd=DATA_DIR, capture_output=True, timeout=5,
+            )
         subprocess.run(
-            ["git", "add", PORTFOLIO_PATH],
-            cwd=repo_dir, capture_output=True, timeout=5,
+            ["git", "commit", "-m", message],
+            cwd=DATA_DIR, capture_output=True, timeout=5,
         )
-        subprocess.run(
-            ["git", "commit", "-m", message, "--", PORTFOLIO_PATH],
-            cwd=repo_dir, capture_output=True, timeout=5,
-        )
+        # Auto-push if configured
+        if _should_auto_push():
+            subprocess.run(
+                ["git", "push"],
+                cwd=DATA_DIR, capture_output=True, timeout=15,
+            )
     except Exception:
-        pass  # git not available or not a repo — that's fine
+        pass  # git not available or push failed — that's fine
+
+
+def _should_auto_push():
+    """Check data/config.json for auto_push setting."""
+    config_path = os.path.join(DATA_DIR, "config.json")
+    try:
+        with open(config_path, "r") as f:
+            return json.load(f).get("auto_push", False)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return False
 
 
 def _collect_tickers(portfolio):
@@ -158,23 +184,7 @@ def _write_strategy(data, commit_msg=None):
             raise
 
         if commit_msg:
-            _git_commit_strategy(commit_msg)
-
-
-def _git_commit_strategy(message):
-    """Stage strategy.json and commit."""
-    repo_dir = os.path.dirname(__file__)
-    try:
-        subprocess.run(
-            ["git", "add", STRATEGY_PATH],
-            cwd=repo_dir, capture_output=True, timeout=5,
-        )
-        subprocess.run(
-            ["git", "commit", "-m", message, "--", STRATEGY_PATH],
-            cwd=repo_dir, capture_output=True, timeout=5,
-        )
-    except Exception:
-        pass
+            _git_commit_data(commit_msg, STRATEGY_PATH)
 
 
 def _read_strategy_defaults():
