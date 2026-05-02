@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+
+{% block nav_history %}active{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1>Price History</h1>
+    <div class="header-actions">
+        <select id="ticker-select" class="form-input" onchange="loadHistory()" style="width:120px;display:inline-block;">
+            <option value="">Select ticker</option>
+            {% for t in tickers %}
+            <option value="{{ t }}" {% if t == default_ticker %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+        </select>
+        <select id="range-select" class="form-input" onchange="loadHistory()" style="width:100px;display:inline-block;">
+            <option value="5d">1 Week</option>
+            <option value="1mo">1 Month</option>
+            <option value="3mo">3 Months</option>
+            <option value="6mo">6 Months</option>
+            <option value="1y" selected>1 Year</option>
+            <option value="2y">2 Years</option>
+            <option value="5y">5 Years</option>
+            <option value="max">Max</option>
+        </select>
+    </div>
+</section>
+
+<!-- Holding Summary Card -->
+<section class="holding-summary" id="holding-summary" style="display:none;">
+    <div class="card-row">
+        <div class="card summary-card" id="h-position">
+            <h3>Position</h3>
+            <div class="card-value" id="h-shares">—</div>
+            <div class="card-sub" id="h-avg">Avg: —</div>
+        </div>
+        <div class="card summary-card" id="h-mkt-value">
+            <h3>Market Value</h3>
+            <div class="card-value" id="h-value">—</div>
+            <div class="card-sub" id="h-last-price">Last: —</div>
+        </div>
+        <div class="card summary-card" id="h-unrealized">
+            <h3>Unrealized P&amp;L</h3>
+            <div class="card-value" id="h-upnl">—</div>
+            <div class="card-sub" id="h-upnl-pct">—</div>
+        </div>
+        <div class="card summary-card" id="h-realized">
+            <h3>Realized P&amp;L</h3>
+            <div class="card-value" id="h-rpnl">—</div>
+            <div class="card-sub">From closed trades</div>
+        </div>
+    </div>
+</section>
+
+<!-- Chart -->
+<section class="chart-section">
+    <div id="kline-chart" style="width:100%;height:480px;border:1px solid #30363d;border-radius:8px;overflow:hidden;background:#0d1117;"></div>
+    <div id="chart-legend" class="chart-legend">
+        <span class="legend-item"><span class="legend-dot" style="background:#3fb950;"></span> BUY</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#f85149;"></span> SELL</span>
+        <span class="legend-item"><span class="legend-line" style="background:#d29922;"></span> Avg Cost</span>
+        <span class="legend-item"><span class="legend-line" style="background:#58a6ff;"></span> 20 MA</span>
+        <span class="legend-item"><span class="legend-line" style="background:#bc8cff;"></span> 60 MA</span>
+    </div>
+</section>
+
+<!-- Trade P&L Table -->
+<section class="trade-pnl-section" id="trade-pnl-section" style="display:none;">
+    <h2>Trade History &amp; P&amp;L</h2>
+    <div class="table-container">
+        <table id="trade-pnl-table" class="data-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Action</th>
+                    <th>Shares</th>
+                    <th>Price</th>
+                    <th>Total</th>
+                    <th>Fees</th>
+                    <th>Realized P&amp;L</th>
+                    <th>Accumulated P&amp;L</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+let _chart = null;
+let _candleSeries = null;
+let _volumeSeries = null;
+
+// fmt$, fmtPct, clsPct provided by app.js
+
+async function loadHistory() {
+    const ticker = document.querySelector('#ticker-select').value;
+    if (!ticker) return;
+    const range = document.querySelector('#range-select').value;
+
+    // Update URL without reload
+    const url = new URL(window.location);
+    url.searchParams.set('ticker', ticker);
+    history.replaceState(null, '', url);
+
+    document.querySelector('#holding-summary').style.display = 'none';
+    document.querySelector('#trade-pnl-section').style.display = 'none';
+
+    try {
+        const resp = await fetch(`/api/history/${ticker}?range=${range}`);
+        const data = await resp.json();
+        if (data.error) { alert(data.error); return; }
+        renderChart(data);
+        renderHoldingSummary(data);
+        renderTradePnlTable(data);
+    } catch(e) { console.error(e); }
+}
+
+function renderChart(data) {
+    const container = document.querySelector('#kline-chart');
+    container.innerHTML = '';
+
+    _chart = LightweightCharts.createChart(container, {
+        layout: {
+            background: { color: '#0d1117' },
+            textColor: '#8b949e',
+        },
+        grid: {
+            vertLines: { color: '#1c2128' },
+            horzLines: { color: '#1c2128' },
+        },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        rightPriceScale: { borderColor: '#30363d' },
+        timeScale: { borderColor: '#30363d', timeVisible: false },
+        width: container.clientWidth,
+        height: 480,
+    });
+
+    // Candlestick series
+    _candleSeries = _chart.addCandlestickSeries({
+        upColor: '#3fb950',
+        downColor: '#f85149',
+        borderUpColor: '#3fb950',
+        borderDownColor: '#f85149',
+        wickUpColor: '#3fb950',
+        wickDownColor: '#f85149',
+    });
+    _candleSeries.setData(data.candles);
+
+    // Volume series
+    _volumeSeries = _chart.addHistogramSeries({
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'volume',
+    });
+    _chart.priceScale('volume').applyOptions({
+        scaleMargins: { top: 0.8, bottom: 0 },
+    });
+    const volData = data.candles.map(c => ({
+        time: c.time,
+        value: c.volume,
+        color: c.close >= c.open ? 'rgba(63,185,80,0.3)' : 'rgba(248,81,73,0.3)',
+    }));
+    _volumeSeries.setData(volData);
+
+    // Moving averages (computed from close prices)
+    const closes = data.candles.map(c => c.close);
+    const times = data.candles.map(c => c.time);
+
+    function computeMA(period) {
+        const result = [];
+        for (let i = period - 1; i < closes.length; i++) {
+            let sum = 0;
+            for (let j = i - period + 1; j <= i; j++) sum += closes[j];
+            result.push({ time: times[i], value: +(sum / period).toFixed(2) });
+        }
+        return result;
+    }
+
+    const ma20Data = computeMA(20);
+    if (ma20Data.length > 1) {
+        const ma20Line = _chart.addLineSeries({
+            color: '#58a6ff',
+            lineWidth: 1,
+            priceLineVisible: false,
+            lastValueVisible: true,
+            title: '20 MA',
+        });
+        ma20Line.setData(ma20Data);
+    }
+
+    const ma60Data = computeMA(60);
+    if (ma60Data.length > 1) {
+        const ma60Line = _chart.addLineSeries({
+            color: '#bc8cff',
+            lineWidth: 1,
+            priceLineVisible: false,
+            lastValueVisible: true,
+            title: '60 MA',
+        });
+        ma60Line.setData(ma60Data);
+    }
+
+    // Avg cost line
+    const avgPrice = data.holding?.avg_price;
+    if (avgPrice && avgPrice > 0 && data.candles.length > 0) {
+        const avgLine = _chart.addLineSeries({
+            color: '#d29922',
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            priceLineVisible: false,
+            lastValueVisible: true,
+            title: 'Avg Cost',
+        });
+        avgLine.setData([
+            { time: data.candles[0].time, value: avgPrice },
+            { time: data.candles[data.candles.length-1].time, value: avgPrice },
+        ]);
+    }
+
+    // Buy/Sell markers
+    const markers = [];
+    for (const t of data.trades||[]) {
+        if (!t.date) continue;
+        // Find the nearest candle date
+        const candleDates = data.candles.map(c=>c.time);
+        let markerDate = t.date;
+        if (!candleDates.includes(t.date)) {
+            // Find nearest date
+            const closest = candleDates.reduce((prev, curr) =>
+                Math.abs(new Date(curr)-new Date(t.date)) < Math.abs(new Date(prev)-new Date(t.date)) ? curr : prev
+            , candleDates[0]);
+            markerDate = closest;
+        }
+        const isBuy = t.action === 'BUY';
+        markers.push({
+            time: markerDate,
+            position: isBuy ? 'belowBar' : 'aboveBar',
+            color: isBuy ? '#3fb950' : '#f85149',
+            shape: isBuy ? 'arrowUp' : 'arrowDown',
+            text: `${t.action} ${t.shares}@${t.price}`,
+        });
+    }
+    if (markers.length) {
+        markers.sort((a,b) => a.time.localeCompare(b.time));
+        _candleSeries.setMarkers(markers);
+    }
+
+    _chart.timeScale().fitContent();
+
+    // Responsive
+    const ro = new ResizeObserver(entries => {
+        const {width} = entries[0].contentRect;
+        _chart.applyOptions({width});
+    });
+    ro.observe(container);
+}
+
+function renderHoldingSummary(data) {
+    const h = data.holding;
+    const section = document.querySelector('#holding-summary');
+    if (!h || !h.shares) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+
+    const lastCandle = data.candles.length ? data.candles[data.candles.length-1] : null;
+    const lastPrice = lastCandle ? lastCandle.close : 0;
+    const lastDate = lastCandle ? lastCandle.time : '';
+    const value = h.shares * lastPrice;
+    const cost = h.shares * h.avg_price;
+    const upnl = value - cost;
+    const upnlPct = cost>0 ? (upnl/cost)*100 : 0;
+
+    document.querySelector('#h-shares').textContent = h.shares + ' shares';
+    document.querySelector('#h-avg').textContent = 'Avg: ' + fmt$(h.avg_price);
+    document.querySelector('#h-value').textContent = fmt$(value);
+    document.querySelector('#h-last-price').textContent = 'Close ' + lastDate + ': ' + fmt$(lastPrice);
+
+    const upnlEl = document.querySelector('#h-upnl');
+    upnlEl.textContent = fmt$(upnl);
+    upnlEl.className = 'card-value ' + clsPct(upnl);
+    const upnlPctEl = document.querySelector('#h-upnl-pct');
+    upnlPctEl.textContent = fmtPct(upnlPct);
+    upnlPctEl.className = 'card-sub ' + clsPct(upnlPct);
+
+    const rpnlEl = document.querySelector('#h-rpnl');
+    rpnlEl.textContent = fmt$(data.accumulated_pnl);
+    rpnlEl.className = 'card-value ' + clsPct(data.accumulated_pnl);
+}
+
+function renderTradePnlTable(data) {
+    const trades = data.trades || [];
+    const section = document.querySelector('#trade-pnl-section');
+    const tbody = document.querySelector('#trade-pnl-table tbody');
+    tbody.innerHTML = '';
+
+    if (!trades.length) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+
+    for (const t of trades) {
+        const total = t.shares * t.price;
+        const isBuy = t.action === 'BUY';
+        const tr = document.createElement('tr');
+        tr.className = isBuy ? 'trade-buy' : 'trade-sell';
+        tr.innerHTML = `
+            <td>${t.date||'—'}</td>
+            <td><span class="badge ${isBuy?'badge-btd':'badge-str'}">${t.action}</span></td>
+            <td class="num">${t.shares}</td>
+            <td class="num">${fmt$(t.price)}</td>
+            <td class="num">${fmt$(total)}</td>
+            <td class="num">${t.fees?fmt$(t.fees):'—'}</td>
+            <td class="num"><span class="${clsPct(t.realized_pnl)}">${t.realized_pnl!=null?fmt$(t.realized_pnl):'—'}</span></td>
+            <td class="num"><span class="${clsPct(t.accumulated_pnl)}">${t.accumulated_pnl!=null?fmt$(t.accumulated_pnl):'—'}</span></td>
+            <td class="text-sm">${t.notes||''}</td>
+        `;
+        tbody.appendChild(tr);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const ticker = document.querySelector('#ticker-select').value;
+    if (ticker) loadHistory();
+});
+</script>
+{% endblock %}

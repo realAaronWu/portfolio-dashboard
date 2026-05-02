@@ -1,0 +1,39 @@
+{
+  "total_capital": 100000,
+  "buckets": {
+    "tech_stocks": {
+      "name": "Individual Tech Stocks",
+      "target_weight": 22,
+      "target_amount": 22000,
+      "holdings": []
+    },
+    "growth_etfs": {
+      "name": "Growth & Market ETFs",
+      "target_weight": 25,
+      "target_amount": 25000,
+      "holdings": []
+    },
+    "defensive_etfs": {
+      "name": "Income & Defensive ETFs",
+      "target_weight": 25,
+      "target_amount": 25000,
+      "holdings": []
+    },
+    "gold_silver": {
+      "name": "Gold & Silver",
+      "target_weight": 23,
+      "target_amount": 23000,
+      "holdings": []
+    },
+    "hedges": {
+      "name": "Leveraged Hedges",
+      "target_weight": 5,
+      "target_amount": 5000,
+      "holdings": []
+    }
+  },
+  "options": [],
+  "rotation_pool": 0,
+  "monthly_btd_budget": 1500,
+  "trades": []
+}

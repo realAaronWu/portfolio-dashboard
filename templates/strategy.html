@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+
+{% block nav_strategy %}active{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1>Strategy Configuration</h1>
+    <div class="header-actions">
+        <button class="btn btn-primary" id="save-all-btn" onclick="saveAllStrategy()">Save All Changes</button>
+        <button class="btn btn-ghost" onclick="resetToDefaults()">Reset to Defaults</button>
+    </div>
+</section>
+
+<!-- Bucket Allocation -->
+<section class="strategy-section">
+    <h2>Bucket Allocation</h2>
+    <p class="section-desc">Set target weight (%) for each bucket. Dollar amounts auto-calculate from total capital (<strong id="strat-total-cap">$0</strong>).</p>
+    <div class="table-container">
+        <table class="data-table" id="alloc-table">
+            <thead>
+                <tr>
+                    <th>Bucket</th>
+                    <th>Target Weight (%)</th>
+                    <th>Target Amount ($)</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+            <tfoot>
+                <tr style="font-weight:600;border-top:2px solid #30363d;">
+                    <td>Total</td>
+                    <td id="alloc-total-pct" class="num">0%</td>
+                    <td id="alloc-total-amt" class="num">$0</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</section>
+
+<!-- STR Thresholds -->
+<section class="strategy-section">
+    <h2>Sell-The-Rip (STR) Thresholds</h2>
+    <p class="section-desc">When a ticker's price diverges above its 20-day SMA by the threshold %, trim the specified percentage of the position.</p>
+    <div class="table-container">
+        <table class="data-table" id="str-table">
+            <thead>
+                <tr>
+                    <th>Bucket</th>
+                    <th>Tier 1 Div %</th>
+                    <th>Tier 1 Trim %</th>
+                    <th>Tier 2 Div %</th>
+                    <th>Tier 2 Trim %</th>
+                    <th>Tier 3 Div %</th>
+                    <th>Tier 3 Trim %</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</section>
+
+<!-- BTD Thresholds -->
+<section class="strategy-section">
+    <h2>Buy-The-Dip (BTD) Thresholds</h2>
+    <p class="section-desc">When a ticker drops below its 20-day SMA by the threshold %, trigger a buy signal at increasing urgency.</p>
+    <div class="table-container">
+        <table class="data-table" id="btd-table">
+            <thead>
+                <tr>
+                    <th>Bucket</th>
+                    <th>Tier 1 Dip %</th>
+                    <th>Tier 2 Dip %</th>
+                    <th>Tier 3 Dip %</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</section>
+
+<!-- Hedge Strategy -->
+<section class="strategy-section">
+    <h2>Hedge Strategy</h2>
+    <p class="section-desc">Configure how the hedges bucket is allocated between puts and calls, with target DTE, delta, and OTM ranges.</p>
+    <div class="hedge-grid" id="hedge-grid">
+        <!-- Populated by JS -->
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BUCKET_NAMES = {
+    tech_stocks: 'Tech Stocks',
+    growth_etfs: 'Growth ETFs',
+    defensive_etfs: 'Defensive ETFs',
+    gold_silver: 'Gold & Silver',
+    hedges: 'Hedges',
+};
+const BUCKET_KEYS = ['tech_stocks','growth_etfs','defensive_etfs','gold_silver','hedges'];
+
+let _strategy = null;
+let _totalCapital = 0;
+
+// fmt$, fmtInt$, showToast provided by app.js
+
+function inp(id, val, opts='') {
+    return `<input type="number" id="${id}" value="${val}" class="strat-input" ${opts}>`;
+}
+
+async function loadStrategy() {
+    try {
+        const r = await fetch('/api/strategy');
+        const data = await r.json();
+        _strategy = data.strategy;
+        _totalCapital = data.total_capital;
+        renderAllSections();
+    } catch(e) { console.error(e); }
+}
+
+function renderAllSections() {
+    document.querySelector('#strat-total-cap').textContent = fmtInt$(_totalCapital);
+    renderAllocTable();
+    renderStrTable();
+    renderBtdTable();
+    renderHedgeGrid();
+}
+
+// --- Bucket Allocation ---
+function renderAllocTable() {
+    const tbody = document.querySelector('#alloc-table tbody');
+    tbody.innerHTML = '';
+    const weights = _strategy.bucket_weights || {};
+    let totalPct = 0;
+
+    for (const bk of BUCKET_KEYS) {
+        const w = weights[bk] || 0;
+        const amt = _totalCapital * w / 100;
+        totalPct += w;
+        tbody.innerHTML += `<tr>
+            <td>${BUCKET_NAMES[bk]}</td>
+            <td class="num">${inp('aw-'+bk, w, 'step="1" min="0" max="100" onchange="updateAllocTotals()"')}</td>
+            <td class="num alloc-amt" id="aa-${bk}">${fmtInt$(amt)}</td>
+        </tr>`;
+    }
+    document.querySelector('#alloc-total-pct').textContent = totalPct + '%';
+    document.querySelector('#alloc-total-amt').textContent = fmtInt$(_totalCapital);
+    colorAllocTotal(totalPct);
+}
+
+function updateAllocTotals() {
+    let totalPct = 0;
+    for (const bk of BUCKET_KEYS) {
+        const el = document.querySelector('#aw-'+bk);
+        const w = parseFloat(el?.value) || 0;
+        const amt = _totalCapital * w / 100;
+        totalPct += w;
+        document.querySelector('#aa-'+bk).textContent = fmtInt$(amt);
+    }
+    document.querySelector('#alloc-total-pct').textContent = totalPct + '%';
+    colorAllocTotal(totalPct);
+}
+
+function colorAllocTotal(pct) {
+    const el = document.querySelector('#alloc-total-pct');
+    el.className = 'num ' + (pct===100 ? 'positive' : 'negative');
+}
+
+// --- STR Thresholds ---
+function renderStrTable() {
+    const tbody = document.querySelector('#str-table tbody');
+    tbody.innerHTML = '';
+    const str = _strategy.str_thresholds || {};
+
+    for (const bk of BUCKET_KEYS) {
+        const tiers = str[bk] || [];
+        const t = (i,f) => tiers[i] ? tiers[i][f] : 0;
+        tbody.innerHTML += `<tr>
+            <td>${BUCKET_NAMES[bk]}</td>
+            <td class="num">${inp('str-'+bk+'-d0', t(0,'div'), 'step="0.5" min="0"')}</td>
+            <td class="num">${inp('str-'+bk+'-t0', t(0,'trim'), 'step="1" min="0"')}</td>
+            <td class="num">${inp('str-'+bk+'-d1', t(1,'div'), 'step="0.5" min="0"')}</td>
+            <td class="num">${inp('str-'+bk+'-t1', t(1,'trim'), 'step="1" min="0"')}</td>
+            <td class="num">${inp('str-'+bk+'-d2', t(2,'div'), 'step="0.5" min="0"')}</td>
+            <td class="num">${inp('str-'+bk+'-t2', t(2,'trim'), 'step="1" min="0"')}</td>
+        </tr>`;
+    }
+}
+
+// --- BTD Thresholds ---
+function renderBtdTable() {
+    const tbody = document.querySelector('#btd-table tbody');
+    tbody.innerHTML = '';
+    const btd = _strategy.btd_thresholds || {};
+
+    for (const bk of BUCKET_KEYS) {
+        const tiers = btd[bk] || [];
+        const d = (i) => tiers[i] ? tiers[i].dip : 0;
+        tbody.innerHTML += `<tr>
+            <td>${BUCKET_NAMES[bk]}</td>
+            <td class="num">${inp('btd-'+bk+'-0', d(0), 'step="0.5" max="0"')}</td>
+            <td class="num">${inp('btd-'+bk+'-1', d(1), 'step="0.5" max="0"')}</td>
+            <td class="num">${inp('btd-'+bk+'-2', d(2), 'step="0.5" max="0"')}</td>
+        </tr>`;
+    }
+}
+
+// --- Hedge Strategy ---
+function renderHedgeGrid() {
+    const grid = document.querySelector('#hedge-grid');
+    const h = _strategy.hedge_strategy || {};
+    grid.innerHTML = `
+        <div class="hedge-card card">
+            <h3>Allocation</h3>
+            <div class="hedge-row">
+                <label>Portfolio hedge %</label>
+                ${inp('h-total-pct', h.total_pct||5, 'step="1" min="0" max="100"')}
+            </div>
+            <div class="hedge-row">
+                <label>Puts allocation %</label>
+                ${inp('h-puts-pct', h.puts_pct||60, 'step="5" min="0" max="100" onchange="syncCallsPct()"')}
+            </div>
+            <div class="hedge-row">
+                <label>Calls allocation %</label>
+                ${inp('h-calls-pct', h.calls_pct||40, 'step="5" min="0" max="100"')}
+            </div>
+        </div>
+        <div class="hedge-card card">
+            <h3>Put Parameters</h3>
+            <div class="hedge-row">
+                <label>Target DTE range</label>
+                <span class="range-inputs">
+                    ${inp('h-dte-min', h.target_dte_min||90, 'step="10" min="0"')}
+                    <span class="range-sep">to</span>
+                    ${inp('h-dte-max', h.target_dte_max||200, 'step="10" min="0"')}
+                </span>
+            </div>
+            <div class="hedge-row">
+                <label>Target delta range</label>
+                <span class="range-inputs">
+                    ${inp('h-delta-put-min', h.target_delta_put_min||-0.40, 'step="0.05" max="0"')}
+                    <span class="range-sep">to</span>
+                    ${inp('h-delta-put-max', h.target_delta_put_max||-0.15, 'step="0.05" max="0"')}
+                </span>
+            </div>
+            <div class="hedge-row">
+                <label>OTM % range</label>
+                <span class="range-inputs">
+                    ${inp('h-otm-min', h.otm_pct_min||3, 'step="1" min="0"')}
+                    <span class="range-sep">to</span>
+                    ${inp('h-otm-max', h.otm_pct_max||15, 'step="1" min="0"')}
+                </span>
+            </div>
+        </div>
+        <div class="hedge-card card">
+            <h3>Call Parameters</h3>
+            <div class="hedge-row">
+                <label>Target delta range</label>
+                <span class="range-inputs">
+                    ${inp('h-delta-call-min', h.target_delta_call_min||0.20, 'step="0.05" min="0"')}
+                    <span class="range-sep">to</span>
+                    ${inp('h-delta-call-max', h.target_delta_call_max||0.40, 'step="0.05" min="0"')}
+                </span>
+            </div>
+        </div>
+    `;
+}
+
+function syncCallsPct() {
+    const puts = parseFloat(document.querySelector('#h-puts-pct')?.value)||0;
+    const callsEl = document.querySelector('#h-calls-pct');
+    if (callsEl) callsEl.value = Math.max(0, 100 - puts);
+}
+
+// --- Collect & Save ---
+function collectStrategy() {
+    const bw = {};
+    for (const bk of BUCKET_KEYS) bw[bk] = parseFloat(document.querySelector('#aw-'+bk)?.value)||0;
+
+    const str_th = {};
+    for (const bk of BUCKET_KEYS) {
+        str_th[bk] = [0,1,2].map(i => ({
+            div:  parseFloat(document.querySelector('#str-'+bk+'-d'+i)?.value)||0,
+            trim: parseFloat(document.querySelector('#str-'+bk+'-t'+i)?.value)||0,
+        }));
+    }
+
+    const btd_th = {};
+    for (const bk of BUCKET_KEYS) {
+        btd_th[bk] = [0,1,2].map(i => ({
+            dip: parseFloat(document.querySelector('#btd-'+bk+'-'+i)?.value)||0,
+        }));
+    }
+
+    const hedge = {
+        total_pct:            parseFloat(document.querySelector('#h-total-pct')?.value)||0,
+        puts_pct:             parseFloat(document.querySelector('#h-puts-pct')?.value)||0,
+        calls_pct:            parseFloat(document.querySelector('#h-calls-pct')?.value)||0,
+        target_dte_min:       parseFloat(document.querySelector('#h-dte-min')?.value)||0,
+        target_dte_max:       parseFloat(document.querySelector('#h-dte-max')?.value)||0,
+        target_delta_put_min: parseFloat(document.querySelector('#h-delta-put-min')?.value)||0,
+        target_delta_put_max: parseFloat(document.querySelector('#h-delta-put-max')?.value)||0,
+        target_delta_call_min:parseFloat(document.querySelector('#h-delta-call-min')?.value)||0,
+        target_delta_call_max:parseFloat(document.querySelector('#h-delta-call-max')?.value)||0,
+        otm_pct_min:          parseFloat(document.querySelector('#h-otm-min')?.value)||0,
+        otm_pct_max:          parseFloat(document.querySelector('#h-otm-max')?.value)||0,
+    };
+
+    return { bucket_weights: bw, str_thresholds: str_th, btd_thresholds: btd_th, hedge_strategy: hedge };
+}
+
+async function saveAllStrategy() {
+    const payload = collectStrategy();
+
+    // Validate allocation totals to 100%
+    const totalPct = Object.values(payload.bucket_weights).reduce((a,b)=>a+b,0);
+    if (totalPct !== 100) {
+        if (!confirm(`Bucket weights sum to ${totalPct}% (not 100%). Save anyway?`)) return;
+    }
+
+    try {
+        const r = await fetch('/api/strategy', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        const data = await r.json();
+        if (data.error) { showToast(data.error, 'error'); return; }
+        _strategy = data.strategy;
+        showToast('Strategy saved');
+        renderAllSections();
+    } catch(e) { showToast('Save failed', 'error'); console.error(e); }
+}
+
+async function resetToDefaults() {
+    if (!confirm('Reset all strategy settings to defaults? This will overwrite your current values.')) return;
+    try {
+        const r = await fetch('/api/strategy/reset', { method: 'POST' });
+        const data = await r.json();
+        if (data.error) { showToast(data.error, 'error'); return; }
+        _strategy = data.strategy;
+        _totalCapital = data.total_capital;
+        showToast('Reset to defaults');
+        renderAllSections();
+    } catch(e) { showToast('Reset failed', 'error'); }
+}
+
+document.addEventListener('DOMContentLoaded', loadStrategy);
+</script>
+{% endblock %}

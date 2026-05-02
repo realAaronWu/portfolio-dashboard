@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block nav_summary %}active{% endblock %}
+
+{% block content %}
+<div class="summary-page"></div>
+<section class="page-header">
+    <h1>Portfolio Summary</h1>
+    <div class="header-actions">
+        <button class="btn btn-primary" onclick="refreshSummary()">Refresh</button>
+    </div>
+</section>
+
+<!-- Top Summary Cards -->
+<section class="summary-cards">
+    <div class="card summary-card" id="total-value">
+        <h3>Total Portfolio Value</h3>
+        <span class="card-value">$0.00</span>
+    </div>
+    <div class="card summary-card" id="total-pnl">
+        <h3>Total P&amp;L</h3>
+        <span class="card-value">$0.00</span>
+        <span class="card-pct">0.00%</span>
+    </div>
+    <div class="card summary-card" id="monthly-income">
+        <h3>Monthly Income Estimate</h3>
+        <span class="card-value">$0.00</span>
+    </div>
+    <div class="card summary-card" id="theta-cost">
+        <h3>Monthly Theta Cost</h3>
+        <span class="card-value">$0.00</span>
+    </div>
+</section>
+
+<!-- Bucket Allocation -->
+<section class="allocation-section">
+    <h2>Bucket Allocation</h2>
+    <div class="allocation-row">
+        <div class="chart-container">
+            <canvas id="allocation-chart"></canvas>
+        </div>
+        <div class="allocation-table-container">
+            <table id="allocation-table" class="data-table">
+                <thead>
+                    <tr>
+                        <th>Bucket</th>
+                        <th>Target %</th>
+                        <th>Target $</th>
+                        <th>Actual $</th>
+                        <th>Deviation $</th>
+                        <th>Deviation %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- Scenario Analysis -->
+<section class="scenario-section">
+    <h2>Scenario Analysis</h2>
+    <div class="scenario-cards">
+
+        <!-- Bull Case: Market +5% -->
+        <div class="card scenario-card scenario-bull" id="scenario-bull">
+            <h3>Market +5%</h3>
+            <p class="scenario-label">Bull Case</p>
+            <div class="scenario-detail">
+                <div class="scenario-row">
+                    <span class="scenario-key">Equity Change</span>
+                    <span class="scenario-val positive" data-field="equity-change">$0.00</span>
+                </div>
+                <div class="scenario-row">
+                    <span class="scenario-key">Hedge P&amp;L</span>
+                    <span class="scenario-val" data-field="hedge-pnl">$0.00</span>
+                </div>
+                <div class="scenario-row">
+                    <span class="scenario-key">Net Change</span>
+                    <span class="scenario-val" data-field="net-change">$0.00</span>
+                </div>
+                <div class="scenario-row scenario-total">
+                    <span class="scenario-key">New Portfolio Value</span>
+                    <span class="scenario-val" data-field="new-value">$0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bear Case: Market -5% -->
+        <div class="card scenario-card scenario-bear" id="scenario-bear">
+            <h3>Market -5%</h3>
+            <p class="scenario-label">Bear Case</p>
+            <div class="scenario-detail">
+                <div class="scenario-row">
+                    <span class="scenario-key">Equity Change</span>
+                    <span class="scenario-val negative" data-field="equity-change">$0.00</span>
+                </div>
+                <div class="scenario-row">
+                    <span class="scenario-key">Hedge P&amp;L</span>
+                    <span class="scenario-val" data-field="hedge-pnl">$0.00</span>
+                </div>
+                <div class="scenario-row">
+                    <span class="scenario-key">Net Change</span>
+                    <span class="scenario-val" data-field="net-change">$0.00</span>
+                </div>
+                <div class="scenario-row scenario-total">
+                    <span class="scenario-key">New Portfolio Value</span>
+                    <span class="scenario-val" data-field="new-value">$0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Crash Case: Market -10% -->
+        <div class="card scenario-card scenario-crash" id="scenario-crash">
+            <h3>Market -10%</h3>
+            <p class="scenario-label">Crash Case</p>
+            <div class="scenario-detail">
+                <div class="scenario-row">
+                    <span class="scenario-key">Equity Change</span>
+                    <span class="scenario-val negative" data-field="equity-change">$0.00</span>
+                </div>
+                <div class="scenario-row">
+                    <span class="scenario-key">Hedge P&amp;L</span>
+                    <span class="scenario-val" data-field="hedge-pnl">$0.00</span>
+                </div>
+                <div class="scenario-row">
+                    <span class="scenario-key">Net Change</span>
+                    <span class="scenario-val" data-field="net-change">$0.00</span>
+                </div>
+                <div class="scenario-row scenario-total">
+                    <span class="scenario-key">New Portfolio Value</span>
+                    <span class="scenario-val" data-field="new-value">$0.00</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</section>
+
+<!-- STR / BTD Action Items -->
+<section class="action-items-section">
+    <h2>STR / BTD Action Items</h2>
+    <div class="table-container">
+        <table id="action-items-table" class="data-table">
+            <thead>
+                <tr>
+                    <th>Action</th>
+                    <th>Ticker</th>
+                    <th>Bucket</th>
+                    <th>Current Divergence</th>
+                    <th>Suggested Trade</th>
+                    <th>Est. Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Populated by JavaScript -->
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        loadSummary();
+    });
+</script>
+{% endblock %}

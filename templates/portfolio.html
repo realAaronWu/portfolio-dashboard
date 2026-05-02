@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+
+{% block nav_portfolio %}active{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1>Portfolio Manager</h1>
+</section>
+
+<!-- Top Settings Bar -->
+<section class="settings-bar">
+    <div class="setting-group">
+        <label for="total-capital">Total Capital</label>
+        <span id="total-capital" class="setting-value">$0.00</span>
+    </div>
+    <div class="setting-group">
+        <label for="monthly-btd-budget">Monthly BTD Budget</label>
+        <input type="number" id="monthly-btd-budget" class="setting-input" placeholder="0.00" step="0.01">
+    </div>
+    <div class="setting-group">
+        <label for="rotation-pool">Rotation Pool</label>
+        <input type="number" id="rotation-pool" class="setting-input" placeholder="0.00" step="0.01">
+    </div>
+    <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+</section>
+
+<!-- Bucket Sections -->
+<section class="bucket-sections">
+
+    <!-- Tech Stocks -->
+    <details class="bucket-section" data-bucket="tech_stocks" open>
+        <summary class="bucket-header">
+            <span class="bucket-name">Tech Stocks</span>
+            <span class="bucket-meta">
+                <span class="bucket-target-pct">Target: <span class="target-pct">—</span>%</span>
+                <span class="bucket-target-amt">Target $: <span class="target-amt">—</span></span>
+                <span class="bucket-actual-val">Actual $: <span class="actual-val">—</span></span>
+                <span class="bucket-deviation">Deviation: <span class="deviation-pct">—</span>%</span>
+            </span>
+        </summary>
+        <div class="bucket-content">
+            <table class="data-table holdings-table">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Target Amount</th>
+                        <th>Actual Shares</th>
+                        <th>Avg Price</th>
+                        <th>Mkt Price</th>
+                        <th>Value</th>
+                        <th>P&amp;L ($)</th>
+                        <th>P&amp;L (%)</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+            <button class="btn btn-secondary btn-add-holding" onclick="showAddHoldingForm('tech_stocks', this)">+ Add Holding</button>
+            <div class="add-holding-form" style="display: none;">
+                <input type="text" placeholder="Ticker" class="input-ticker">
+                <input type="number" placeholder="Target Amount" class="input-target-amount" step="0.01">
+                <input type="number" placeholder="Shares" class="input-shares" step="0.0001">
+                <input type="number" placeholder="Avg Price" class="input-avg-price" step="0.01">
+                <button class="btn btn-primary" onclick="addHolding('tech_stocks', this)">Save</button>
+                <button class="btn btn-ghost" onclick="hideAddHoldingForm(this)">Cancel</button>
+            </div>
+        </div>
+    </details>
+
+    <!-- Growth ETFs -->
+    <details class="bucket-section" data-bucket="growth_etfs" open>
+        <summary class="bucket-header">
+            <span class="bucket-name">Growth ETFs</span>
+            <span class="bucket-meta">
+                <span class="bucket-target-pct">Target: <span class="target-pct">—</span>%</span>
+                <span class="bucket-target-amt">Target $: <span class="target-amt">—</span></span>
+                <span class="bucket-actual-val">Actual $: <span class="actual-val">—</span></span>
+                <span class="bucket-deviation">Deviation: <span class="deviation-pct">—</span>%</span>
+            </span>
+        </summary>
+        <div class="bucket-content">
+            <table class="data-table holdings-table">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Target Amount</th>
+                        <th>Actual Shares</th>
+                        <th>Avg Price</th>
+                        <th>Mkt Price</th>
+                        <th>Value</th>
+                        <th>P&amp;L ($)</th>
+                        <th>P&amp;L (%)</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+            <button class="btn btn-secondary btn-add-holding" onclick="showAddHoldingForm('growth_etfs', this)">+ Add Holding</button>
+            <div class="add-holding-form" style="display: none;">
+                <input type="text" placeholder="Ticker" class="input-ticker">
+                <input type="number" placeholder="Target Amount" class="input-target-amount" step="0.01">
+                <input type="number" placeholder="Shares" class="input-shares" step="0.0001">
+                <input type="number" placeholder="Avg Price" class="input-avg-price" step="0.01">
+                <button class="btn btn-primary" onclick="addHolding('growth_etfs', this)">Save</button>
+                <button class="btn btn-ghost" onclick="hideAddHoldingForm(this)">Cancel</button>
+            </div>
+        </div>
+    </details>
+
+    <!-- Defensive ETFs -->
+    <details class="bucket-section" data-bucket="defensive_etfs" open>
+        <summary class="bucket-header">
+            <span class="bucket-name">Defensive ETFs</span>
+            <span class="bucket-meta">
+                <span class="bucket-target-pct">Target: <span class="target-pct">—</span>%</span>
+                <span class="bucket-target-amt">Target $: <span class="target-amt">—</span></span>
+                <span class="bucket-actual-val">Actual $: <span class="actual-val">—</span></span>
+                <span class="bucket-deviation">Deviation: <span class="deviation-pct">—</span>%</span>
+            </span>
+        </summary>
+        <div class="bucket-content">
+            <table class="data-table holdings-table">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Target Amount</th>
+                        <th>Actual Shares</th>
+                        <th>Avg Price</th>
+                        <th>Mkt Price</th>
+                        <th>Value</th>
+                        <th>P&amp;L ($)</th>
+                        <th>P&amp;L (%)</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+            <button class="btn btn-secondary btn-add-holding" onclick="showAddHoldingForm('defensive_etfs', this)">+ Add Holding</button>
+            <div class="add-holding-form" style="display: none;">
+                <input type="text" placeholder="Ticker" class="input-ticker">
+                <input type="number" placeholder="Target Amount" class="input-target-amount" step="0.01">
+                <input type="number" placeholder="Shares" class="input-shares" step="0.0001">
+                <input type="number" placeholder="Avg Price" class="input-avg-price" step="0.01">
+                <button class="btn btn-primary" onclick="addHolding('defensive_etfs', this)">Save</button>
+                <button class="btn btn-ghost" onclick="hideAddHoldingForm(this)">Cancel</button>
+            </div>
+        </div>
+    </details>
+
+    <!-- Gold & Silver -->
+    <details class="bucket-section" data-bucket="gold_silver" open>
+        <summary class="bucket-header">
+            <span class="bucket-name">Gold &amp; Silver</span>
+            <span class="bucket-meta">
+                <span class="bucket-target-pct">Target: <span class="target-pct">—</span>%</span>
+                <span class="bucket-target-amt">Target $: <span class="target-amt">—</span></span>
+                <span class="bucket-actual-val">Actual $: <span class="actual-val">—</span></span>
+                <span class="bucket-deviation">Deviation: <span class="deviation-pct">—</span>%</span>
+            </span>
+        </summary>
+        <div class="bucket-content">
+            <table class="data-table holdings-table">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Target Amount</th>
+                        <th>Actual Shares</th>
+                        <th>Avg Price</th>
+                        <th>Mkt Price</th>
+                        <th>Value</th>
+                        <th>P&amp;L ($)</th>
+                        <th>P&amp;L (%)</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+            <button class="btn btn-secondary btn-add-holding" onclick="showAddHoldingForm('gold_silver', this)">+ Add Holding</button>
+            <div class="add-holding-form" style="display: none;">
+                <input type="text" placeholder="Ticker" class="input-ticker">
+                <input type="number" placeholder="Target Amount" class="input-target-amount" step="0.01">
+                <input type="number" placeholder="Shares" class="input-shares" step="0.0001">
+                <input type="number" placeholder="Avg Price" class="input-avg-price" step="0.01">
+                <button class="btn btn-primary" onclick="addHolding('gold_silver', this)">Save</button>
+                <button class="btn btn-ghost" onclick="hideAddHoldingForm(this)">Cancel</button>
+            </div>
+        </div>
+    </details>
+
+    <!-- Hedges -->
+    <details class="bucket-section" data-bucket="hedges" open>
+        <summary class="bucket-header">
+            <span class="bucket-name">Hedges</span>
+            <span class="bucket-meta">
+                <span class="bucket-target-pct">Target: <span class="target-pct">—</span>%</span>
+                <span class="bucket-target-amt">Target $: <span class="target-amt">—</span></span>
+                <span class="bucket-actual-val">Actual $: <span class="actual-val">—</span></span>
+                <span class="bucket-deviation">Deviation: <span class="deviation-pct">—</span>%</span>
+            </span>
+        </summary>
+        <div class="bucket-content">
+            <table class="data-table holdings-table">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Target Amount</th>
+                        <th>Actual Shares</th>
+                        <th>Avg Price</th>
+                        <th>Mkt Price</th>
+                        <th>Value</th>
+                        <th>P&amp;L ($)</th>
+                        <th>P&amp;L (%)</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+            <button class="btn btn-secondary btn-add-holding" onclick="showAddHoldingForm('hedges', this)">+ Add Holding</button>
+            <div class="add-holding-form" style="display: none;">
+                <input type="text" placeholder="Ticker" class="input-ticker">
+                <input type="number" placeholder="Target Amount" class="input-target-amount" step="0.01">
+                <input type="number" placeholder="Shares" class="input-shares" step="0.0001">
+                <input type="number" placeholder="Avg Price" class="input-avg-price" step="0.01">
+                <button class="btn btn-primary" onclick="addHolding('hedges', this)">Save</button>
+                <button class="btn btn-ghost" onclick="hideAddHoldingForm(this)">Cancel</button>
+            </div>
+        </div>
+    </details>
+
+</section>
+
+<!-- Options & Hedges Section -->
+<section class="options-section">
+    <h2>Options &amp; Hedges</h2>
+    <div class="table-container">
+        <table id="options-table" class="data-table">
+            <thead>
+                <tr>
+                    <th>Underlying</th>
+                    <th>Type</th>
+                    <th>Tier</th>
+                    <th>Strike</th>
+                    <th>Expiry</th>
+                    <th>Contracts</th>
+                    <th>Avg Cost</th>
+                    <th>Delta</th>
+                    <th>DTE</th>
+                    <th>Budget</th>
+                    <th>Total Cost</th>
+                    <th>Notes</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Populated by JavaScript -->
+            </tbody>
+        </table>
+    </div>
+    <button class="btn btn-secondary btn-add-option" onclick="showAddOptionForm()">+ Add Option</button>
+    <div id="add-option-form" class="add-option-form" style="display: none;">
+        <div class="form-row">
+            <input type="text" id="opt-underlying" placeholder="Underlying" class="form-input">
+            <select id="opt-type" class="form-input">
+                <option value="put">Put</option>
+                <option value="call">Call</option>
+            </select>
+            <input type="text" id="opt-tier" placeholder="Tier" class="form-input">
+            <input type="number" id="opt-strike" placeholder="Strike" step="0.01" class="form-input">
+            <input type="date" id="opt-expiry" class="form-input">
+            <input type="number" id="opt-contracts" placeholder="Contracts" step="1" class="form-input">
+        </div>
+        <div class="form-row">
+            <input type="number" id="opt-avg-cost" placeholder="Avg Cost" step="0.01" class="form-input">
+            <input type="number" id="opt-delta" placeholder="Delta" step="0.01" class="form-input">
+            <input type="number" id="opt-budget" placeholder="Budget" step="0.01" class="form-input">
+            <input type="text" id="opt-notes" placeholder="Notes" class="form-input form-input-wide">
+            <button class="btn btn-primary" onclick="addOption()">Save</button>
+            <button class="btn btn-ghost" onclick="hideAddOptionForm()">Cancel</button>
+        </div>
+    </div>
+</section>
+<!-- Record Trade Modal -->
+<div id="trade-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+        <h3>Record Trade</h3>
+        <form id="trade-form" onsubmit="return false;">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Ticker</label>
+                    <input type="text" id="trade-ticker" class="form-input" readonly>
+                    <input type="hidden" id="trade-bucket">
+                </div>
+                <div class="form-group">
+                    <label>Action</label>
+                    <select id="trade-action" class="form-input">
+                        <option value="BUY">BUY</option>
+                        <option value="SELL">SELL</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" id="trade-date" class="form-input">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Shares</label>
+                    <input type="number" id="trade-shares" class="form-input" step="0.0001" min="0" placeholder="0" required>
+                </div>
+                <div class="form-group">
+                    <label>Price per Share</label>
+                    <input type="number" id="trade-price" class="form-input" step="0.01" min="0" placeholder="0.00" required>
+                </div>
+                <div class="form-group">
+                    <label>Fees / Commission</label>
+                    <input type="number" id="trade-fees" class="form-input" step="0.01" min="0" placeholder="0.00">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group form-group-wide">
+                    <label>Notes</label>
+                    <input type="text" id="trade-notes" class="form-input" placeholder="Optional notes">
+                </div>
+            </div>
+            <div class="form-row" id="trade-preview" style="display:none;">
+                <div class="trade-preview-box">
+                    <span id="trade-preview-text"></span>
+                </div>
+            </div>
+            <div class="form-row form-actions">
+                <button class="btn btn-primary" onclick="submitTrade()">Submit Trade</button>
+                <button class="btn btn-ghost" onclick="closeTradeModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Trade Log Section -->
+<section class="trade-log-section">
+    <h2>Trade Log</h2>
+    <div class="table-container">
+        <table id="trade-log-table" class="data-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Action</th>
+                    <th>Ticker</th>
+                    <th>Shares</th>
+                    <th>Price</th>
+                    <th>Total</th>
+                    <th>Fees</th>
+                    <th>Resulting Shares</th>
+                    <th>Resulting Avg</th>
+                    <th>Notes</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Populated by JavaScript -->
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Portfolio JSON embedded by server — zero-fetch instant render
+    const _embeddedPortfolio = {{ portfolio_json|safe }};
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Instant render from embedded data (no spinner, no fetch)
+        _pfData = _embeddedPortfolio;
+        renderPortfolioSettings(_pfData);
+        renderAllBuckets(_pfData);
+        renderOptionsTable(_pfData.options||[]);
+        renderTradeLog(_pfData.trades||[]);
+
+        // Background: fetch market prices and patch cells
+        API.getMarketData().then(mkt => {
+            _priceMap = {};
+            for (const [tk, d] of Object.entries(mkt.data||{})) {
+                if (d.price!=null) _priceMap[tk] = d.price;
+            }
+            patchLivePrices();
+        }).catch(e => console.warn('Market data unavailable:', e));
+    });
+</script>
+{% endblock %}

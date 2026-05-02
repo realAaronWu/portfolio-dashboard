@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block nav_dashboard %}active{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1>Market Dashboard</h1>
+    <div class="header-actions">
+        <button class="btn btn-primary" onclick="refreshMarketData()">Refresh Data</button>
+        <span class="last-updated">Last updated: <span id="last-updated-time">—</span></span>
+    </div>
+</section>
+
+<!-- Filter Row -->
+<section class="filter-row">
+    <button class="filter-btn active" data-filter="all" onclick="filterTable('all', this)">All</button>
+    <button class="filter-btn" data-filter="tech_stocks" onclick="filterTable('tech_stocks', this)">Tech Stocks</button>
+    <button class="filter-btn" data-filter="growth_etfs" onclick="filterTable('growth_etfs', this)">Growth ETFs</button>
+    <button class="filter-btn" data-filter="defensive_etfs" onclick="filterTable('defensive_etfs', this)">Defensive ETFs</button>
+    <button class="filter-btn" data-filter="gold_silver" onclick="filterTable('gold_silver', this)">Gold &amp; Silver</button>
+    <button class="filter-btn" data-filter="hedges" onclick="filterTable('hedges', this)">Hedges</button>
+</section>
+
+<!-- Market Data Table -->
+<section class="table-container">
+    <table id="market-table" class="data-table">
+        <thead>
+            <tr>
+                <th>Bucket</th>
+                <th>Ticker</th>
+                <th>Price</th>
+                <th>Shares</th>
+                <th>Avg Cost</th>
+                <th>Value</th>
+                <th>P&amp;L ($)</th>
+                <th>P&amp;L (%)</th>
+                <th>vs SMA</th>
+                <th>vs EMA</th>
+                <th>1M Chg</th>
+                <th>Signal</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Populated by JavaScript -->
+        </tbody>
+    </table>
+</section>
+
+<!-- Signals Summary -->
+<section class="signals-summary">
+    <h2>Signals Summary</h2>
+    <div class="card-row">
+        <!-- STR Signals Card -->
+        <div class="card card-str" id="str-signals">
+            <h3>STR Signals</h3>
+            <p class="card-subtitle">Tickers to consider trimming</p>
+            <ul class="signal-list">
+                <!-- Populated by JavaScript -->
+            </ul>
+        </div>
+
+        <!-- BTD Signals Card -->
+        <div class="card card-btd" id="btd-signals">
+            <h3>BTD Signals</h3>
+            <p class="card-subtitle">Tickers to consider buying</p>
+            <ul class="signal-list">
+                <!-- Populated by JavaScript -->
+            </ul>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        loadDashboard();
+    });
+</script>
+{% endblock %}

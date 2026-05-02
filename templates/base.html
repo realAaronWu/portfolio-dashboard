@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="navbar-brand">Portfolio Dashboard</div>
+        <div class="navbar-nav">
+            {% block nav_active %}{% endblock %}
+            <a href="/" class="{% block nav_dashboard %}{% endblock %}">Dashboard</a>
+            <a href="/portfolio" class="{% block nav_portfolio %}{% endblock %}">Portfolio</a>
+            <a href="/history" class="{% block nav_history %}{% endblock %}">History</a>
+            <a href="/strategy" class="{% block nav_strategy %}{% endblock %}">Strategy</a>
+            <a href="/summary" class="{% block nav_summary %}{% endblock %}">Summary</a>
+        </div>
+    </nav>
+
+    <!-- Loading Spinner Overlay -->
+    <div id="loading" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Scripts -->
+    <script src="/static/js/app.js"></script>
+    {% block scripts %}{% endblock %}
+
+</body>
+</html>
