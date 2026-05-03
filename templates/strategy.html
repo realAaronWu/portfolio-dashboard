@@ -77,6 +77,15 @@
     </div>
 </section>
 
+<!-- General Settings -->
+<section class="strategy-section">
+    <h2>General Settings</h2>
+    <p class="section-desc">Global parameters that apply across all buckets.</p>
+    <div class="hedge-grid" id="general-grid">
+        <!-- Populated by JS -->
+    </div>
+</section>
+
 <!-- Hedge Strategy -->
 <section class="strategy-section">
     <h2>Hedge Strategy</h2>
@@ -122,7 +131,23 @@ function renderAllSections() {
     renderAllocTable();
     renderStrTable();
     renderBtdTable();
+    renderGeneralGrid();
     renderHedgeGrid();
+}
+
+// --- General Settings ---
+function renderGeneralGrid() {
+    const grid = document.querySelector('#general-grid');
+    const cooldown = _strategy.str_cooldown_days ?? 7;
+    grid.innerHTML = `
+        <div class="hedge-card card">
+            <h3>STR Cooldown</h3>
+            <div class="hedge-row">
+                <label>Days after trim to suppress STR signal</label>
+                ${inp('gen-cooldown', cooldown, 'step="1" min="0" max="30"')}
+            </div>
+        </div>
+    `;
 }
 
 // --- Bucket Allocation ---
@@ -305,7 +330,9 @@ function collectStrategy() {
         otm_pct_max:          parseFloat(document.querySelector('#h-otm-max')?.value)||0,
     };
 
-    return { bucket_weights: bw, str_thresholds: str_th, btd_thresholds: btd_th, hedge_strategy: hedge };
+    const str_cooldown_days = parseInt(document.querySelector('#gen-cooldown')?.value) || 7;
+
+    return { bucket_weights: bw, str_thresholds: str_th, btd_thresholds: btd_th, hedge_strategy: hedge, str_cooldown_days };
 }
 
 async function saveAllStrategy() {

@@ -7,18 +7,133 @@
     "hedges": 5
   },
   "str_thresholds": {
-    "tech_stocks":    [{"div": 5, "trim": 10}, {"div": 8, "trim": 15}, {"div": 12, "trim": 20}],
-    "growth_etfs":    [{"div": 4, "trim": 10}, {"div": 6, "trim": 15}, {"div": 10, "trim": 20}],
-    "defensive_etfs": [{"div": 3, "trim": 8},  {"div": 5, "trim": 12}, {"div": 8,  "trim": 15}],
-    "gold_silver":    [{"div": 4, "trim": 10}, {"div": 7, "trim": 15}, {"div": 10, "trim": 20}],
-    "hedges":         [{"div": 5, "trim": 10}, {"div": 8, "trim": 15}, {"div": 12, "trim": 20}]
+    "tech_stocks": [
+      {
+        "div": 5,
+        "trim": 10
+      },
+      {
+        "div": 8,
+        "trim": 15
+      },
+      {
+        "div": 12,
+        "trim": 20
+      }
+    ],
+    "growth_etfs": [
+      {
+        "div": 4,
+        "trim": 10
+      },
+      {
+        "div": 6,
+        "trim": 15
+      },
+      {
+        "div": 10,
+        "trim": 20
+      }
+    ],
+    "defensive_etfs": [
+      {
+        "div": 3,
+        "trim": 8
+      },
+      {
+        "div": 5,
+        "trim": 12
+      },
+      {
+        "div": 8,
+        "trim": 15
+      }
+    ],
+    "gold_silver": [
+      {
+        "div": 4,
+        "trim": 10
+      },
+      {
+        "div": 7,
+        "trim": 15
+      },
+      {
+        "div": 10,
+        "trim": 20
+      }
+    ],
+    "hedges": [
+      {
+        "div": 5,
+        "trim": 10
+      },
+      {
+        "div": 8,
+        "trim": 15
+      },
+      {
+        "div": 12,
+        "trim": 20
+      }
+    ]
   },
   "btd_thresholds": {
-    "tech_stocks":    [{"dip": -1}, {"dip": -5}, {"dip": -10}],
-    "growth_etfs":    [{"dip": -1}, {"dip": -5}, {"dip": -10}],
-    "defensive_etfs": [{"dip": -1}, {"dip": -5}, {"dip": -10}],
-    "gold_silver":    [{"dip": -1}, {"dip": -5}, {"dip": -10}],
-    "hedges":         [{"dip": -1}, {"dip": -5}, {"dip": -10}]
+    "tech_stocks": [
+      {
+        "dip": -1
+      },
+      {
+        "dip": -5
+      },
+      {
+        "dip": -10
+      }
+    ],
+    "growth_etfs": [
+      {
+        "dip": -1
+      },
+      {
+        "dip": -5
+      },
+      {
+        "dip": -10
+      }
+    ],
+    "defensive_etfs": [
+      {
+        "dip": -1
+      },
+      {
+        "dip": -5
+      },
+      {
+        "dip": -10
+      }
+    ],
+    "gold_silver": [
+      {
+        "dip": -1
+      },
+      {
+        "dip": -5
+      },
+      {
+        "dip": -10
+      }
+    ],
+    "hedges": [
+      {
+        "dip": -1
+      },
+      {
+        "dip": -5
+      },
+      {
+        "dip": -10
+      }
+    ]
   },
   "hedge_strategy": {
     "total_pct": 5,
@@ -26,11 +141,12 @@
     "calls_pct": 40,
     "target_dte_min": 90,
     "target_dte_max": 200,
-    "target_delta_put_min": -0.40,
+    "target_delta_put_min": -0.4,
     "target_delta_put_max": -0.15,
-    "target_delta_call_min": 0.20,
-    "target_delta_call_max": 0.40,
+    "target_delta_call_min": 0.2,
+    "target_delta_call_max": 0.4,
     "otm_pct_min": 3,
     "otm_pct_max": 15
-  }
+  },
+  "str_cooldown_days": 7
 }

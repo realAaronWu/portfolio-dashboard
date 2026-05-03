@@ -263,6 +263,9 @@ def api_market_data():
         for holding in bucket.get("holdings", []):
             ticker_bucket[holding["ticker"]] = bucket_key
 
+    # STR cooldown: find tickers with a SELL in the last 5 trading days (~7 calendar days)
+    str_cooldown_tickers = _get_str_cooldown_tickers(portfolio)
+
     data = {}
     for ticker, info in raw.items():
         if "error" in info:
@@ -271,6 +274,16 @@ def api_market_data():
 
         bucket_type = ticker_bucket.get(ticker, "tech_stocks")
         signal = market.compute_signal(info.get("div_sma", 0), bucket_type, thresholds_map)
+
+        # Suppress STR signal if ticker was trimmed recently
+        if signal["action"] == "STR" and ticker in str_cooldown_tickers:
+            days_ago = str_cooldown_tickers[ticker]
+            signal = {
+                "action": "HOLD",
+                "label": f"Trimmed {days_ago}d ago — cooldown",
+                "trim_pct": 0,
+                "severity": "none",
+            }
 
         data[ticker] = {
             "price": info.get("price"),
@@ -285,6 +298,35 @@ def api_market_data():
         }
 
     return jsonify({"data": data})
+
+
+def _get_str_cooldown_tickers(portfolio):
+    """Return {ticker: days_ago} for tickers with a SELL in the last 5 trading days.
+
+    Uses 7 calendar days as a conservative approximation of 5 trading days.
+    Cooldown period is configurable via strategy.json "str_cooldown_days".
+    """
+    strategy = _read_strategy()
+    cooldown_days = strategy.get("str_cooldown_days", 7)
+    cutoff = datetime.datetime.now() - datetime.timedelta(days=cooldown_days)
+    cooldown = {}
+    for trade in portfolio.get("trades", []):
+        if trade.get("action") != "SELL":
+            continue
+        trade_date_str = trade.get("date", "")
+        if not trade_date_str:
+            continue
+        try:
+            trade_date = datetime.datetime.strptime(trade_date_str, "%Y-%m-%d")
+        except ValueError:
+            continue
+        if trade_date >= cutoff:
+            ticker = trade.get("ticker", "")
+            days_ago = (datetime.datetime.now() - trade_date).days
+            # Keep the most recent sell per ticker
+            if ticker not in cooldown or days_ago < cooldown[ticker]:
+                cooldown[ticker] = days_ago
+    return cooldown
 
 
 # ---------------------------------------------------------------------------
