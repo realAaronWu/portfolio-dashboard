@@ -244,6 +244,21 @@ th.num {
     color: #0d1117;
 }
 
+.badge-positive {
+    background: #3fb950;
+    color: #0d1117;
+}
+
+.badge-warning {
+    background: #d29922;
+    color: #0d1117;
+}
+
+.badge-neutral {
+    background: #30363d;
+    color: #8b949e;
+}
+
 /* --- Buttons --- */
 .btn {
     display: inline-flex;

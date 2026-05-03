@@ -16,6 +16,7 @@ import threading
 
 from flask import Flask, jsonify, render_template, request
 
+import ibkr
 import market
 
 app = Flask(__name__)
@@ -783,6 +784,84 @@ def api_summary():
 def api_clear_cache():
     market.clear_cache()
     return jsonify({"status": "ok", "message": "Market data cache cleared"})
+
+
+# ---------------------------------------------------------------------------
+# API – IBKR Integration
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/ibkr/status")
+def api_ibkr_status():
+    """Check IBKR Client Portal Gateway connection/auth status."""
+    status = ibkr.check_auth()
+    return jsonify(status)
+
+
+@app.route("/api/ibkr/accounts")
+def api_ibkr_accounts():
+    """List available IBKR accounts."""
+    try:
+        accounts = ibkr.get_accounts()
+        return jsonify({"accounts": accounts})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+
+@app.route("/api/ibkr/positions")
+def api_ibkr_positions():
+    """Fetch raw positions from IBKR (preview before sync)."""
+    try:
+        positions = ibkr.get_positions()
+        return jsonify({"positions": positions, "count": len(positions)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+
+@app.route("/api/ibkr/trades")
+def api_ibkr_trades():
+    """Fetch recent trades from IBKR (preview before sync)."""
+    days = request.args.get("days", 7, type=int)
+    try:
+        trades = ibkr.get_trades(days=min(days, 7))
+        return jsonify({"trades": trades, "count": len(trades)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+
+@app.route("/api/ibkr/sync", methods=["POST"])
+def api_ibkr_sync():
+    """Sync positions and trades from IBKR into portfolio.json.
+
+    Body (optional):
+        { "bucket_map": {"AAPL": "tech_stocks", ...}, "sync_trades": true, "trade_days": 7 }
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    bucket_map = body.get("bucket_map", {})
+    sync_trades = body.get("sync_trades", True)
+    trade_days = min(body.get("trade_days", 7), 7)
+
+    portfolio = _read_portfolio()
+
+    try:
+        pos_result = ibkr.sync_positions_to_portfolio(portfolio, bucket_map=bucket_map)
+    except Exception as e:
+        return jsonify({"error": f"Position sync failed: {e}"}), 502
+
+    trade_result = None
+    if sync_trades:
+        try:
+            trade_result = ibkr.sync_trades_to_portfolio(portfolio, days=trade_days)
+        except Exception as e:
+            trade_result = {"error": str(e), "added": 0, "skipped": 0}
+
+    _write_portfolio(portfolio, commit_msg="IBKR sync: update positions and trades")
+
+    return jsonify({
+        "status": "ok",
+        "positions": pos_result,
+        "trades": trade_result,
+    })
 
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,10 @@
 {% block content %}
 <section class="page-header">
     <h1>Portfolio Manager</h1>
+    <div class="header-actions">
+        <button class="btn btn-secondary" id="ibkr-sync-btn" onclick="ibkrSync()">Sync from IBKR</button>
+        <span id="ibkr-status-badge" class="badge badge-neutral" title="Click Sync to connect">Disconnected</span>
+    </div>
 </section>
 
 <!-- Top Settings Bar -->
@@ -394,6 +398,67 @@
             }
             patchLivePrices();
         }).catch(e => console.warn('Market data unavailable:', e));
+
+        // Check IBKR status on load
+        checkIbkrStatus();
     });
+
+    // --- IBKR Integration ---
+    async function checkIbkrStatus() {
+        const badge = document.getElementById('ibkr-status-badge');
+        try {
+            const r = await fetch('/api/ibkr/status');
+            const d = await r.json();
+            if (d.error) {
+                badge.textContent = 'Gateway offline';
+                badge.className = 'badge badge-neutral';
+                badge.title = d.error;
+            } else if (d.authenticated) {
+                badge.textContent = 'Connected';
+                badge.className = 'badge badge-positive';
+                badge.title = 'IBKR Gateway authenticated';
+            } else if (d.connected) {
+                badge.textContent = 'Not authenticated';
+                badge.className = 'badge badge-warning';
+                badge.title = 'Gateway running but not authenticated. Log in via browser.';
+            } else {
+                badge.textContent = 'Disconnected';
+                badge.className = 'badge badge-neutral';
+                badge.title = 'Gateway not connected';
+            }
+        } catch(e) {
+            badge.textContent = 'Error';
+            badge.className = 'badge badge-neutral';
+        }
+    }
+
+    async function ibkrSync() {
+        const btn = document.getElementById('ibkr-sync-btn');
+        const badge = document.getElementById('ibkr-status-badge');
+        btn.disabled = true;
+        btn.textContent = 'Syncing...';
+
+        try {
+            const r = await fetch('/api/ibkr/sync', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+            const d = await r.json();
+            if (d.error) {
+                showToast(d.error, 'error');
+                return;
+            }
+            const pos = d.positions || {};
+            const tr = d.trades || {};
+            const msg = `Synced: ${pos.positions_count||0} positions, ${tr.added||0} new trades`;
+            showToast(msg);
+            badge.textContent = 'Connected';
+            badge.className = 'badge badge-positive';
+            // Reload page to show updated data
+            setTimeout(() => location.reload(), 1000);
+        } catch(e) {
+            showToast('IBKR sync failed: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Sync from IBKR';
+        }
+    }
 </script>
 {% endblock %}
