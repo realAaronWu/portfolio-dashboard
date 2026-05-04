@@ -15,7 +15,7 @@
 <section class="settings-bar">
     <div class="setting-group">
         <label for="total-capital">Total Capital</label>
-        <span id="total-capital" class="setting-value">$0.00</span>
+        <input type="number" id="total-capital" class="setting-input" placeholder="0.00" step="1000" min="0">
     </div>
     <div class="setting-group">
         <label for="monthly-btd-budget">Monthly BTD Budget</label>
@@ -68,6 +68,47 @@
                 <input type="number" placeholder="Shares" class="input-shares" step="0.0001">
                 <input type="number" placeholder="Avg Price" class="input-avg-price" step="0.01">
                 <button class="btn btn-primary" onclick="addHolding('tech_stocks', this)">Save</button>
+                <button class="btn btn-ghost" onclick="hideAddHoldingForm(this)">Cancel</button>
+            </div>
+        </div>
+    </details>
+
+    <!-- Satellite -->
+    <details class="bucket-section" data-bucket="satellite" open>
+        <summary class="bucket-header">
+            <span class="bucket-name">Satellite</span>
+            <span class="bucket-meta">
+                <span class="bucket-target-pct">Limit: <span class="target-amt">—</span></span>
+                <span class="bucket-actual-val">Actual $: <span class="actual-val">—</span></span>
+                <span class="bucket-deviation">Deviation: <span class="deviation-pct">—</span>%</span>
+            </span>
+        </summary>
+        <div class="bucket-content">
+            <table class="data-table holdings-table satellite-table">
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Target Amount</th>
+                        <th>Actual Shares</th>
+                        <th>Avg Price</th>
+                        <th>Mkt Price</th>
+                        <th>Value</th>
+                        <th>P&amp;L ($)</th>
+                        <th>P&amp;L (%)</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Populated by JavaScript -->
+                </tbody>
+            </table>
+            <button class="btn btn-secondary btn-add-holding" onclick="showAddHoldingForm('satellite', this)">+ Add Holding</button>
+            <div class="add-holding-form" style="display: none;">
+                <input type="text" placeholder="Ticker" class="input-ticker">
+                <input type="number" placeholder="Target Amount" class="input-target-amount" step="0.01">
+                <input type="number" placeholder="Shares" class="input-shares" step="0.0001">
+                <input type="number" placeholder="Avg Price" class="input-avg-price" step="0.01">
+                <button class="btn btn-primary" onclick="addHolding('satellite', this)">Save</button>
                 <button class="btn btn-ghost" onclick="hideAddHoldingForm(this)">Cancel</button>
             </div>
         </div>

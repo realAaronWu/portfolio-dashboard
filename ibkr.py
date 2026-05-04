@@ -265,66 +265,62 @@ def sync_positions_to_portfolio(portfolio, bucket_map=None):
         if p.get("assetClass") in ("STK",) and p.get("position", 0) != 0
     ]
 
-    # Build new holdings by bucket
-    new_holdings_by_bucket = {}
-    ibkr_tickers = set()
+    # Build IBKR position data keyed by ticker
+    ibkr_by_ticker = {}
     for pos in stock_positions:
         ticker = pos.get("contractDesc", pos.get("ticker", ""))
         if not ticker:
             continue
-        ibkr_tickers.add(ticker)
-        bucket = resolve_bucket(ticker)
-        if bucket not in new_holdings_by_bucket:
-            new_holdings_by_bucket[bucket] = []
-        new_holdings_by_bucket[bucket].append({
-            "ticker": ticker,
+        ibkr_by_ticker[ticker] = {
             "shares": pos["position"],
-            "avg_cost": round(pos.get("avgPrice", pos.get("avgCost", 0)), 4),
-        })
+            "avg_price": round(pos.get("avgPrice", pos.get("avgCost", 0)), 4),
+        }
 
-    # Update portfolio buckets
+    # Track which IBKR tickers have been matched to existing holdings
+    matched_tickers = set()
     updated_tickers = []
     new_tickers = []
     removed_tickers = []
 
+    # Pass 1: Update existing holdings in-place (preserves target_amount etc.)
     for bucket_key, bucket_data in portfolio.get("buckets", {}).items():
-        existing_holdings = bucket_data.get("holdings", [])
-        existing_tickers_in_bucket = {h["ticker"] for h in existing_holdings}
+        for h in bucket_data.get("holdings", []):
+            ticker = h["ticker"]
+            if ticker in ibkr_by_ticker:
+                ibkr = ibkr_by_ticker[ticker]
+                h["actual_shares"] = ibkr["shares"]
+                h["avg_price"] = ibkr["avg_price"]
+                matched_tickers.add(ticker)
+                updated_tickers.append(ticker)
+            else:
+                # Ticker not in IBKR — zero out shares but keep in portfolio
+                # (user may still want it as a watchlist / target placeholder)
+                if h.get("actual_shares", 0) != 0:
+                    h["actual_shares"] = 0
+                    h["avg_price"] = 0
+                    removed_tickers.append(ticker)
 
-        # Remove positions that IBKR no longer holds
-        for h in existing_holdings:
-            if h["ticker"] not in ibkr_tickers:
-                removed_tickers.append(h["ticker"])
+    # Pass 2: Add new IBKR tickers not already in any bucket
+    for ticker, ibkr in ibkr_by_ticker.items():
+        if ticker in matched_tickers:
+            continue
+        bucket = resolve_bucket(ticker)
+        if bucket not in portfolio.get("buckets", {}):
+            portfolio.setdefault("buckets", {})[bucket] = {
+                "target_weight": 0,
+                "target_amount": 0,
+                "holdings": [],
+            }
+        portfolio["buckets"][bucket]["holdings"].append({
+            "ticker": ticker,
+            "actual_shares": ibkr["shares"],
+            "avg_price": ibkr["avg_price"],
+            "target_amount": 0,
+        })
+        new_tickers.append(ticker)
 
-        # Replace holdings with IBKR data for this bucket
-        if bucket_key in new_holdings_by_bucket:
-            bucket_data["holdings"] = new_holdings_by_bucket[bucket_key]
-            for h in new_holdings_by_bucket[bucket_key]:
-                if h["ticker"] in existing_tickers_in_bucket:
-                    updated_tickers.append(h["ticker"])
-                else:
-                    new_tickers.append(h["ticker"])
-            del new_holdings_by_bucket[bucket_key]
-        else:
-            # Remove holdings from this bucket that are no longer in IBKR
-            bucket_data["holdings"] = [
-                h for h in existing_holdings if h["ticker"] in ibkr_tickers
-            ]
-
-    # Create "unassigned" bucket for new tickers not mapped to any existing bucket
-    if new_holdings_by_bucket:
-        for bucket_key, holdings in new_holdings_by_bucket.items():
-            if bucket_key not in portfolio.get("buckets", {}):
-                portfolio.setdefault("buckets", {})[bucket_key] = {
-                    "holdings": [],
-                }
-            portfolio["buckets"][bucket_key]["holdings"] = holdings
-            for h in holdings:
-                new_tickers.append(h["ticker"])
-
-    # Update capital
+    # Get cash and compute total value
     total_value = sum(p.get("mktValue", 0) for p in stock_positions) + cash
-    portfolio["total_capital"] = round(total_value, 2)
 
     return {
         "updated_tickers": updated_tickers,

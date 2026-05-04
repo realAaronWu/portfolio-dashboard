@@ -4,7 +4,8 @@
     "growth_etfs": 25,
     "defensive_etfs": 25,
     "gold_silver": 23,
-    "hedges": 5
+    "hedges": 5,
+    "satellite": 0
   },
   "str_thresholds": {
     "tech_stocks": [
@@ -76,6 +77,20 @@
         "div": 12,
         "trim": 20
       }
+    ],
+    "satellite": [
+      {
+        "div": 8,
+        "trim": 10
+      },
+      {
+        "div": 15,
+        "trim": 20
+      },
+      {
+        "div": 25,
+        "trim": 30
+      }
     ]
   },
   "btd_thresholds": {
@@ -132,6 +147,17 @@
       },
       {
         "dip": -10
+      }
+    ],
+    "satellite": [
+      {
+        "dip": -5
+      },
+      {
+        "dip": -10
+      },
+      {
+        "dip": -15
       }
     ]
   },

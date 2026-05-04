@@ -281,7 +281,7 @@ function patchLivePrices() {
 
 function renderPortfolioSettings(pf) {
     const cap = $('#total-capital');
-    if (cap) cap.textContent = fmt$(pf.total_capital||0);
+    if (cap) cap.value = pf.total_capital||0;
     const btd = $('#monthly-btd-budget');
     if (btd) btd.value = pf.monthly_btd_budget||0;
     const rp = $('#rotation-pool');
@@ -315,7 +315,7 @@ function renderAllBuckets(pf) {
             tr.dataset.bucket = bk;
             tr.innerHTML = `
                 <td><strong>${h.ticker}</strong></td>
-                <td class="num">${fmt$(target)}</td>
+                <td class="num editable" data-field="target_amount" data-bucket="${bk}" data-ticker="${h.ticker}">${fmt$(target)}</td>
                 <td class="num editable" data-field="actual_shares" data-bucket="${bk}" data-ticker="${h.ticker}">${shares||'—'}</td>
                 <td class="num editable" data-field="avg_price" data-bucket="${bk}" data-ticker="${h.ticker}">${avg?fmt$(avg):'—'}</td>
                 <td class="num">${mktP?fmt$(mktP):'—'}</td>
@@ -323,6 +323,7 @@ function renderAllBuckets(pf) {
                 <td class="num"><span class="${clsPct(pnl)}">${pnl!=null?fmt$(pnl):'—'}</span></td>
                 <td class="num"><span class="${clsPct(pnlPct)}">${pnlPct!=null?fmtPct(pnlPct):'—'}</span></td>
                 <td>
+                    ${bk==='satellite' ? `<button class="btn btn-secondary btn-sm" onclick="promoteToTech('${h.ticker}')">Promote</button>` : ''}
                     <button class="btn btn-primary btn-sm" onclick="openTradeModal('${bk}','${h.ticker}')">Trade</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteHolding('${bk}','${h.ticker}')">Del</button>
                 </td>
@@ -370,7 +371,14 @@ function startCellEdit(cell) {
     cell.innerHTML = '';
     const input = document.createElement('input');
     input.type = 'number';
-    input.step = field==='actual_shares' ? '0.0001' : '0.01';
+    if (field === 'actual_shares') { input.step = '0.0001'; }
+    else if (field === 'target_amount') {
+        input.step = '100';
+        input.min = '0';
+        const bucketTarget = _pfData?.buckets?.[bucket]?.target_amount || 0;
+        if (bucketTarget > 0) input.max = bucketTarget;
+    }
+    else { input.step = '0.01'; }
     input.value = rawValue;
     input.className = 'cell-edit-input';
     cell.appendChild(input);
@@ -379,6 +387,24 @@ function startCellEdit(cell) {
 
     const commit = async () => {
         const newVal = parseFloat(input.value)||0;
+
+        // Validate: target_amount sum must not exceed bucket target (but always allow reductions)
+        if (field === 'target_amount') {
+            const bucketTarget = _pfData?.buckets?.[bucket]?.target_amount || 0;
+            const holdings = _pfData?.buckets?.[bucket]?.holdings || [];
+            let newSum = 0, oldSum = 0;
+            for (const oh of holdings) {
+                const existing = parseFloat(oh.target_amount) || 0;
+                oldSum += existing;
+                newSum += oh.ticker === ticker ? newVal : existing;
+            }
+            if (bucketTarget > 0 && newSum > bucketTarget && newSum > oldSum) {
+                showToast(`Total target ($${newSum.toLocaleString()}) exceeds bucket limit ($${bucketTarget.toLocaleString()})`, 'error');
+                cancel();
+                return;
+            }
+        }
+
         // Optimistically update local data
         h[field] = newVal;
 
@@ -472,6 +498,23 @@ async function deleteHolding(bucket, ticker) {
         const r = await API.deleteHolding({bucket,ticker});
         if(r.error) showToast(r.error,'error'); else { showToast(`${ticker} removed`); await loadPortfolioData(); }
     } catch(e) { showToast('Delete failed','error'); }
+    finally { hideLoading(); }
+}
+
+// --- Promote satellite → tech_stocks ---
+async function promoteToTech(ticker) {
+    if (!confirm(`Promote ${ticker} from Satellite to Tech Stocks?`)) return;
+    showLoading();
+    try {
+        const r = await fetch('/api/portfolio/promote', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ticker})
+        }).then(r=>r.json());
+        if (r.error) { showToast(r.error, 'error'); return; }
+        showToast(`${ticker} promoted to Tech Stocks`);
+        await loadPortfolioData();
+    } catch(e) { showToast('Promote failed','error'); }
     finally { hideLoading(); }
 }
 
@@ -626,14 +669,19 @@ async function addOption() {
 // --- Save Settings ---
 async function saveSettings() {
     const data = {
-        total_capital:      parseFloat($('#total-capital')?.textContent?.replace(/[$,]/g,''))||0,
+        total_capital:      parseFloat($('#total-capital')?.value)||0,
         monthly_btd_budget: parseFloat($('#monthly-btd-budget')?.value)||0,
         rotation_pool:      parseFloat($('#rotation-pool')?.value)||0,
     };
     showLoading();
     try {
         const r = await API.updateSettings(data);
-        if(r.error) showToast(r.error,'error'); else showToast('Settings saved');
+        if(r.error) { showToast(r.error,'error'); return; }
+        showToast('Settings saved');
+        // Reload to reflect recalculated bucket target amounts
+        _pfData = r;
+        renderPortfolioSettings(_pfData);
+        renderAllBuckets(_pfData);
     } catch(e) { showToast('Save failed','error'); }
     finally { hideLoading(); }
 }

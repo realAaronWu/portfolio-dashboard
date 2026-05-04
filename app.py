@@ -483,6 +483,43 @@ def api_delete_holding():
     return jsonify(portfolio)
 
 
+@app.route("/api/portfolio/promote", methods=["POST"])
+def api_promote_holding():
+    """Move a holding from satellite → tech_stocks with target_amount=0."""
+    body = request.get_json(force=True)
+    ticker = body.get("ticker")
+    if not ticker:
+        return jsonify({"error": "ticker is required"}), 400
+
+    portfolio = _read_portfolio()
+    sat = portfolio.get("buckets", {}).get("satellite")
+    tech = portfolio.get("buckets", {}).get("tech_stocks")
+    if not sat or not tech:
+        return jsonify({"error": "satellite or tech_stocks bucket not found"}), 404
+
+    # Find and remove from satellite
+    holding = None
+    for h in sat.get("holdings", []):
+        if h["ticker"] == ticker:
+            holding = h
+            break
+    if not holding:
+        return jsonify({"error": f"{ticker} not found in satellite"}), 404
+
+    sat["holdings"] = [h for h in sat["holdings"] if h["ticker"] != ticker]
+
+    # Check for duplicates in tech_stocks
+    if any(h["ticker"] == ticker for h in tech.get("holdings", [])):
+        return jsonify({"error": f"{ticker} already exists in tech_stocks"}), 409
+
+    # Add to tech_stocks with target_amount=0
+    holding["target_amount"] = 0
+    tech["holdings"].append(holding)
+
+    _write_portfolio(portfolio, f"Promote {ticker} from satellite to tech_stocks")
+    return jsonify({"status": "ok", "ticker": ticker})
+
+
 # ---------------------------------------------------------------------------
 # API – Options CRUD
 # ---------------------------------------------------------------------------
@@ -667,7 +704,8 @@ def api_update_strategy():
         for bk, bd in portfolio.get("buckets", {}).items():
             weight = strategy.get("bucket_weights", {}).get(bk, 0)
             bd["target_weight"] = weight
-            bd["target_amount"] = round(total_capital * weight / 100, 2)
+            if weight > 0:
+                bd["target_amount"] = round(total_capital * weight / 100, 2)
         _write_portfolio(portfolio, "Sync bucket weights from strategy")
 
     portfolio = _read_portfolio()
@@ -691,7 +729,8 @@ def api_reset_strategy():
     for bk, bd in portfolio.get("buckets", {}).items():
         weight = defaults.get("bucket_weights", {}).get(bk, 0)
         bd["target_weight"] = weight
-        bd["target_amount"] = round(total_capital * weight / 100, 2)
+        if weight > 0:
+            bd["target_amount"] = round(total_capital * weight / 100, 2)
     _write_portfolio(portfolio, "Sync bucket weights after strategy reset")
 
     return jsonify({
@@ -713,6 +752,17 @@ def api_update_settings():
     for key in allowed_keys:
         if key in body:
             portfolio[key] = body[key]
+
+    # Recalculate bucket target_amount when total_capital changes
+    # Skip buckets with weight=0 (fixed-dollar buckets like satellite)
+    if "total_capital" in body:
+        strategy = _read_strategy()
+        total_capital = portfolio["total_capital"]
+        for bk, bd in portfolio.get("buckets", {}).items():
+            weight = strategy.get("bucket_weights", {}).get(bk, 0)
+            bd["target_weight"] = weight
+            if weight > 0:
+                bd["target_amount"] = round(total_capital * weight / 100, 2)
 
     _write_portfolio(portfolio, "Update portfolio settings")
     return jsonify(portfolio)
