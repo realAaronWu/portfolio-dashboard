@@ -68,10 +68,19 @@ def check_auth():
     base = _get_base_url()
     try:
         r = _session().post(f"{base}/v1/api/iserver/auth/status", json={}, timeout=5)
+        # 401 means gateway is up but session not authenticated yet
+        if r.status_code == 401:
+            return {
+                "connected": True,
+                "authenticated": False,
+                "competing": False,
+                "message": "Gateway reachable — authentication required",
+                "error": None,
+            }
         r.raise_for_status()
         data = r.json()
         return {
-            "connected": data.get("connected", False),
+            "connected": data.get("connected", False) or True,
             "authenticated": data.get("authenticated", False),
             "competing": data.get("competing", False),
             "message": data.get("message", ""),

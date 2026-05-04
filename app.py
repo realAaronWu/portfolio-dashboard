@@ -879,10 +879,24 @@ def api_ibkr_config():
 def api_ibkr_gateway_start():
     """Start the IBKR Client Portal Gateway as a background process."""
     global _gateway_process
+    import time, socket
 
-    # Check if already running
+    # Check if already running (managed by us)
     if _gateway_process and _gateway_process.poll() is None:
         return jsonify({"status": "already_running", "pid": _gateway_process.pid})
+
+    # Check if gateway port is already in use (started externally)
+    gw_port = 5001
+    try:
+        cfg = ibkr._read_config().get("ibkr", {})
+        url = cfg.get("gateway_url", "https://localhost:5001")
+        if ":" in url.rsplit("//", 1)[-1]:
+            gw_port = int(url.rsplit(":", 1)[-1].rstrip("/"))
+    except Exception:
+        pass
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        if s.connect_ex(("127.0.0.1", gw_port)) == 0:
+            return jsonify({"status": "already_running", "message": f"Port {gw_port} already in use — gateway may already be running."})
 
     # Locate gateway directory
     body = request.get_json(force=True, silent=True) or {}
@@ -891,17 +905,31 @@ def api_ibkr_gateway_start():
         gw_dir = os.environ.get("IBKR_GATEWAY_DIR", os.path.expanduser("~/Downloads/clientportal.gw"))
 
     run_script = os.path.join(gw_dir, "bin", "run.sh")
-    conf_yaml = os.path.join(gw_dir, "root", "conf.yaml")
     if not os.path.isfile(run_script):
         return jsonify({"error": f"Gateway not found at {gw_dir}. Download it from IBKR."}), 404
 
     try:
+        # run.sh uses relative paths internally (classpath, --conf ../config_file)
+        # Redirect output to a log file so the pipe buffer doesn't block the process.
+        log_path = os.path.join(gw_dir, "gateway.log")
+        log_file = open(log_path, "w")
         _gateway_process = subprocess.Popen(
-            [run_script, conf_yaml],
+            ["bash", run_script, "root/conf.yaml"],
             cwd=gw_dir,
-            stdout=subprocess.PIPE,
+            stdout=log_file,
             stderr=subprocess.STDOUT,
         )
+        # Wait briefly to catch immediate failures
+        time.sleep(2)
+        if _gateway_process.poll() is not None:
+            log_file.close()
+            try:
+                with open(log_path) as lf:
+                    log_tail = lf.read()[-500:]
+            except Exception:
+                log_tail = ""
+            return jsonify({"error": f"Gateway exited immediately. Log: {log_tail}"}), 500
+
         return jsonify({"status": "started", "pid": _gateway_process.pid})
     except Exception as e:
         return jsonify({"error": f"Failed to start gateway: {e}"}), 500
