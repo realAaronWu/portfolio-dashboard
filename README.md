@@ -39,6 +39,14 @@ A local-first web dashboard for tracking and managing a multi-bucket investment 
 - Scenario modeling: Bull (+5%), Bear (-5%), Crash (-10%) with beta-weighted estimates
 - Hedge P&L and theta cost approximations
 
+### IBKR Integration
+- Connect to Interactive Brokers via TWS socket API ([ib_insync](https://github.com/erdewit/ib_insync))
+- Works with IB Gateway or TWS running locally (default `127.0.0.1:4001`)
+- One-click position sync: imports all stock positions into portfolio buckets, preserving existing `target_amount` allocations
+- Trade sync: imports today's executions into the trade log with automatic deduplication (safe to run multiple times)
+- New tickers from IBKR are placed in an "unassigned" bucket; positions no longer held are zeroed out but kept as placeholders
+- Connection settings configurable via in-app modal (host, port, client ID, account ID)
+
 ### Data Protection
 - **Atomic writes**: `tempfile` + `os.replace()` prevents corruption on crash
 - **Rolling backups**: Last 50 snapshots saved automatically in `data/backups/`
@@ -50,6 +58,7 @@ A local-first web dashboard for tracking and managing a multi-bucket investment 
 ### Prerequisites
 - Python 3.10+
 - [`uv`](https://github.com/astral-sh/uv) (recommended) or `pip`
+- [IB Gateway](https://www.interactivebrokers.com/en/trading/ibgateway-stable.php) or TWS (optional, for IBKR sync)
 
 ### Setup
 
@@ -70,7 +79,7 @@ cp data.sample/* data/
 uv run app.py
 
 # Or with pip
-pip install flask requests
+pip install flask requests ib_insync
 python app.py
 ```
 
@@ -133,6 +142,7 @@ Set `false` (or delete the file) to commit locally only. You can always push man
 ```
 portfolio-dashboard/
 ├── app.py                  # Flask backend (routes, API endpoints, data helpers)
+├── ibkr.py                 # IBKR TWS API integration (connect, positions, trades, sync)
 ├── market.py               # Yahoo Finance data fetching, signal computation, scenario modeling
 ├── static/
 │   ├── css/style.css       # Dark-themed responsive UI styles
@@ -148,7 +158,7 @@ portfolio-dashboard/
 │   ├── portfolio.json      # Holdings, trades, capital
 │   ├── strategy.json       # Active strategy config
 │   ├── strategy_defaults.json  # Default strategy template
-│   ├── config.json         # App config (auto_push, etc.)
+│   ├── config.json         # App config (auto_push, IBKR connection settings)
 │   └── backups/            # Rolling backup snapshots
 ├── data.sample/            # Sample templates for fresh setup
 │   ├── portfolio.json
@@ -175,6 +185,13 @@ portfolio-dashboard/
 | POST | `/api/strategy/reset` | Reset strategy to defaults |
 | GET | `/api/summary` | Allocation summary + scenario analysis |
 | POST | `/api/cache/clear` | Clear market data cache |
+| GET/PUT | `/api/ibkr/config` | Get or update IBKR connection settings |
+| POST | `/api/ibkr/connect` | Connect to IB Gateway / TWS |
+| POST | `/api/ibkr/disconnect` | Disconnect from IB Gateway / TWS |
+| GET | `/api/ibkr/status` | Check connection status |
+| GET | `/api/ibkr/positions` | Fetch raw positions (preview) |
+| GET | `/api/ibkr/trades` | Fetch today's trade executions |
+| POST | `/api/ibkr/sync` | Sync positions + trades into portfolio |
 
 ## License
 
