@@ -1,28 +1,30 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["requests"]
+# dependencies = ["ib_insync"]
 # ///
 """
-Interactive Brokers Client Portal Gateway integration.
+Interactive Brokers TWS API integration via ib_insync.
 
-Connects to the locally-running IBKR Client Portal Gateway (default https://localhost:5000)
+Connects to IB Gateway or TWS running locally (default 127.0.0.1:4001)
 to fetch account data, positions, and recent trades.
 
-The gateway must be running and authenticated via browser before calling these functions.
-See: https://ibkrcampus.com/ibkr-api-page/cpapi-v1/#client-portal-gateway
+IB Gateway must be running and authenticated before calling these functions.
 """
 
 import json
 import os
-import urllib3
+import datetime
 
-import requests
+from ib_insync import IB, util
 
-# Suppress InsecureRequestWarning — CP Gateway uses self-signed certs
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# Patch asyncio so ib_insync works in sync/threaded contexts (Flask)
+util.patchAsyncio()
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
+
+# Module-level persistent connection
+_ib: IB | None = None
 
 
 def _read_config():
@@ -34,85 +36,103 @@ def _read_config():
         return {}
 
 
-def _get_base_url():
-    """Return IBKR gateway base URL from config (default https://localhost:5001)."""
+def _get_host():
+    """Return IBKR gateway host from config (default 127.0.0.1)."""
     cfg = _read_config()
-    ibkr = cfg.get("ibkr", {})
-    return ibkr.get("gateway_url", "https://localhost:5001").rstrip("/")
+    return cfg.get("ibkr", {}).get("host", "127.0.0.1")
+
+
+def _get_port():
+    """Return IBKR gateway port from config (default 4001)."""
+    cfg = _read_config()
+    return int(cfg.get("ibkr", {}).get("port", 4001))
+
+
+def _get_client_id():
+    """Return client ID from config (default 1)."""
+    cfg = _read_config()
+    return int(cfg.get("ibkr", {}).get("client_id", 1))
 
 
 def _get_account_id():
-    """Return configured IBKR account ID (or None to auto-detect)."""
+    """Return configured IBKR account ID (or empty string for auto-detect)."""
     cfg = _read_config()
-    ibkr = cfg.get("ibkr", {})
-    return ibkr.get("account_id")
-
-
-def _session():
-    """Create a requests session with SSL verification disabled (self-signed cert)."""
-    s = requests.Session()
-    s.verify = False
-    return s
+    return cfg.get("ibkr", {}).get("account_id", "")
 
 
 # ---------------------------------------------------------------------------
-# Session / Auth
+# Connection Management
 # ---------------------------------------------------------------------------
+
+def connect():
+    """Connect to IB Gateway / TWS. Returns the IB instance.
+
+    Reuses existing connection if still alive.
+    """
+    global _ib
+    if _ib and _ib.isConnected():
+        return _ib
+
+    _ib = IB()
+    host = _get_host()
+    port = _get_port()
+    client_id = _get_client_id()
+    account = _get_account_id()
+
+    _ib.connect(host, port, clientId=client_id, readonly=True, account=account or "")
+    return _ib
+
+
+def disconnect():
+    """Disconnect from IB Gateway / TWS."""
+    global _ib
+    if _ib and _ib.isConnected():
+        _ib.disconnect()
+    _ib = None
+
 
 def check_auth():
-    """Check if the gateway session is authenticated.
+    """Check if we can connect to IB Gateway / TWS.
 
     Returns dict with keys:
-        connected (bool), authenticated (bool), competing (bool), message (str), error (str|None)
+        connected (bool), authenticated (bool), message (str), error (str|None)
     """
-    base = _get_base_url()
     try:
-        r = _session().post(f"{base}/v1/api/iserver/auth/status", json={}, timeout=5)
-        # 401 means gateway is up but session not authenticated yet
-        if r.status_code == 401:
+        ib = connect()
+        accounts = ib.managedAccounts()
+        return {
+            "connected": True,
+            "authenticated": True,
+            "competing": False,
+            "message": f"Connected — accounts: {', '.join(accounts)}",
+            "error": None,
+        }
+    except ConnectionRefusedError:
+        return {
+            "connected": False,
+            "authenticated": False,
+            "competing": False,
+            "message": "",
+            "error": "Cannot connect to IB Gateway. Is it running on port {}?".format(_get_port()),
+        }
+    except Exception as e:
+        msg = str(e)
+        # If already connected from another client
+        if "clientId" in msg.lower() or "already connected" in msg.lower():
             return {
                 "connected": True,
                 "authenticated": False,
-                "competing": False,
-                "message": "Gateway reachable — authentication required",
+                "competing": True,
+                "message": msg,
                 "error": None,
             }
-        r.raise_for_status()
-        data = r.json()
-        return {
-            "connected": data.get("connected", False) or True,
-            "authenticated": data.get("authenticated", False),
-            "competing": data.get("competing", False),
-            "message": data.get("message", ""),
-            "error": None,
-        }
-    except requests.ConnectionError:
         return {
             "connected": False,
             "authenticated": False,
             "competing": False,
             "message": "",
-            "error": "Cannot connect to IBKR Gateway. Is it running?",
+            "error": msg,
         }
-    except Exception as e:
-        return {
-            "connected": False,
-            "authenticated": False,
-            "competing": False,
-            "message": "",
-            "error": str(e),
-        }
-
-
-def tickle():
-    """Keep the session alive (call every ~1 min to prevent timeout)."""
-    base = _get_base_url()
-    try:
-        r = _session().post(f"{base}/v1/api/tickle", timeout=5)
-        r.raise_for_status()
-        return r.json()
-    except Exception as e:
-        return {"error": str(e)}
 
 
 # ---------------------------------------------------------------------------
@@ -120,14 +140,12 @@ def tickle():
 # ---------------------------------------------------------------------------
 
 def get_accounts():
-    """Get list of portfolio accounts. Must be called before position/summary endpoints.
+    """Get list of managed account IDs.
 
-    Returns list of account dicts with keys: id, accountId, accountTitle, type, etc.
+    Returns list of account ID strings.
     """
-    base = _get_base_url()
-    r = _session().get(f"{base}/v1/api/portfolio/accounts", timeout=10)
-    r.raise_for_status()
-    return r.json()
+    ib = connect()
+    return ib.managedAccounts()
 
 
 def _resolve_account_id():
@@ -137,86 +155,100 @@ def _resolve_account_id():
         return acct
     accounts = get_accounts()
     if not accounts:
-        raise ValueError("No accounts found. Check IBKR gateway authentication.")
-    return accounts[0]["accountId"]
+        raise ValueError("No accounts found. Check IB Gateway authentication.")
+    return accounts[0]
 
 
 # ---------------------------------------------------------------------------
 # Positions
 # ---------------------------------------------------------------------------
 
-def get_positions(account_id=None):
-    """Fetch all positions for the account (paginated, returns flat list).
+def get_positions():
+    """Fetch all positions.
 
-    Each position dict includes: contractDesc (ticker), position (shares),
-    mktPrice, mktValue, avgCost, avgPrice, unrealizedPnl, assetClass, currency, conid, etc.
+    Returns list of dicts with keys: ticker, shares, avg_price, mkt_value, asset_class, conid
     """
-    base = _get_base_url()
-    if not account_id:
-        account_id = _resolve_account_id()
+    ib = connect()
+    positions = ib.positions()
 
-    all_positions = []
-    page = 0
-    while True:
-        r = _session().get(f"{base}/v1/api/portfolio/{account_id}/positions/{page}", timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        if not data:
-            break
-        all_positions.extend(data)
-        if len(data) < 100:
-            break
-        page += 1
-
-    return all_positions
+    result = []
+    for pos in positions:
+        contract = pos.contract
+        result.append({
+            "ticker": contract.symbol,
+            "shares": float(pos.position),
+            "avg_price": round(float(pos.avgCost) / (float(contract.multiplier) if contract.multiplier else 1), 4),
+            "asset_class": contract.secType,  # STK, OPT, FUT, etc.
+            "conid": contract.conId,
+            "currency": contract.currency,
+            "account": pos.account,
+        })
+    return result
 
 
 # ---------------------------------------------------------------------------
-# Account Summary / Ledger
+# Account Summary
 # ---------------------------------------------------------------------------
 
 def get_account_summary(account_id=None):
-    """Fetch portfolio summary (net liquidation, cash, etc.).
+    """Fetch account summary (net liquidation, cash, etc.).
 
-    Returns dict of {key: {amount, currency, value, ...}}.
+    Uses accountValues() which returns cached data from the TWS subscription
+    (non-blocking), rather than accountSummary() which can hang.
+
+    Returns dict of {tag: {value, currency}}.
     """
-    base = _get_base_url()
+    ib = connect()
     if not account_id:
         account_id = _resolve_account_id()
 
-    r = _session().get(f"{base}/v1/api/portfolio/{account_id}/summary", timeout=10)
-    r.raise_for_status()
-    return r.json()
+    # accountValues() returns the already-subscribed account data
+    values = ib.accountValues(account=account_id)
 
-
-def get_ledger(account_id=None):
-    """Fetch account ledger (cash balances by currency).
-
-    Returns dict keyed by currency with balance details.
-    """
-    base = _get_base_url()
-    if not account_id:
-        account_id = _resolve_account_id()
-
-    r = _session().get(f"{base}/v1/api/portfolio/{account_id}/ledger", timeout=10)
-    r.raise_for_status()
-    return r.json()
+    tags_of_interest = {
+        "NetLiquidation", "TotalCashValue", "GrossPositionValue",
+        "AvailableFunds", "BuyingPower",
+    }
+    result = {}
+    for item in values:
+        if item.tag in tags_of_interest and item.currency in ("USD", "BASE"):
+            result[item.tag] = {
+                "value": float(item.value) if item.value else 0,
+                "currency": item.currency,
+            }
+    return result
 
 
 # ---------------------------------------------------------------------------
 # Trades / Executions
 # ---------------------------------------------------------------------------
 
-def get_trades(days=7):
-    """Fetch recent trade executions (up to 7 days).
+def get_trades():
+    """Fetch today's trade executions.
 
-    Returns list of trade dicts with keys: symbol, side (B/S), size, price,
-    trade_time, commission, net_amount, sec_type, conid, etc.
+    Returns list of trade dicts with keys: symbol, side, size, price,
+    trade_time, commission, exec_id, sec_type
     """
-    base = _get_base_url()
-    r = _session().get(f"{base}/v1/api/iserver/account/trades", params={"days": days}, timeout=15)
-    r.raise_for_status()
-    return r.json()
+    ib = connect()
+    fills = ib.fills()
+
+    result = []
+    for fill in fills:
+        execution = fill.execution
+        contract = fill.contract
+        commission = fill.commissionReport
+
+        result.append({
+            "symbol": contract.symbol,
+            "sec_type": contract.secType,
+            "side": execution.side,  # "BOT" or "SLD"
+            "size": abs(float(execution.shares)),
+            "price": round(float(execution.price), 4),
+            "trade_time": execution.time.strftime("%Y-%m-%d") if isinstance(execution.time, datetime.datetime) else str(execution.time)[:10],
+            "execution_id": execution.execId,
+            "commission": round(float(commission.commission), 4) if commission and commission.commission != 1.7976931348623157e+308 else 0,
+        })
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -254,35 +286,29 @@ def sync_positions_to_portfolio(portfolio, bucket_map=None):
         return "unassigned"
 
     # Fetch from IBKR
-    # First call get_accounts to initialize backend cache
-    get_accounts()
     positions = get_positions()
     account_id = _resolve_account_id()
 
     # Get cash balance
     cash = 0.0
     try:
-        ledger = get_ledger(account_id)
-        base_ledger = ledger.get("BASE", ledger.get("USD", {}))
-        cash = base_ledger.get("cashbalance", 0.0)
+        summary = get_account_summary(account_id)
+        cash = summary.get("TotalCashValue", {}).get("value", 0.0)
     except Exception:
         pass
 
     # Filter to stocks/ETFs only (skip options, futures, forex, etc.)
-    stock_positions = [
-        p for p in positions
-        if p.get("assetClass") in ("STK",) and p.get("position", 0) != 0
-    ]
+    stock_positions = [p for p in positions if p["asset_class"] == "STK" and p["shares"] != 0]
 
     # Build IBKR position data keyed by ticker
     ibkr_by_ticker = {}
     for pos in stock_positions:
-        ticker = pos.get("contractDesc", pos.get("ticker", ""))
+        ticker = pos["ticker"]
         if not ticker:
             continue
         ibkr_by_ticker[ticker] = {
-            "shares": pos["position"],
-            "avg_price": round(pos.get("avgPrice", pos.get("avgCost", 0)), 4),
+            "shares": pos["shares"],
+            "avg_price": pos["avg_price"],
         }
 
     # Track which IBKR tickers have been matched to existing holdings
@@ -303,7 +329,6 @@ def sync_positions_to_portfolio(portfolio, bucket_map=None):
                 updated_tickers.append(ticker)
             else:
                 # Ticker not in IBKR — zero out shares but keep in portfolio
-                # (user may still want it as a watchlist / target placeholder)
                 if h.get("actual_shares", 0) != 0:
                     h["actual_shares"] = 0
                     h["avg_price"] = 0
@@ -328,8 +353,11 @@ def sync_positions_to_portfolio(portfolio, bucket_map=None):
         })
         new_tickers.append(ticker)
 
-    # Get cash and compute total value
-    total_value = sum(p.get("mktValue", 0) for p in stock_positions) + cash
+    # Compute total value from positions
+    total_value = cash
+    for pos in stock_positions:
+        # shares * avg_price as approximation (mktValue not available from positions())
+        total_value += abs(pos["shares"]) * pos["avg_price"]
 
     return {
         "updated_tickers": updated_tickers,
@@ -343,7 +371,7 @@ def sync_positions_to_portfolio(portfolio, bucket_map=None):
 
 
 def sync_trades_to_portfolio(portfolio, days=7):
-    """Fetch recent IBKR trades and append to portfolio trade log.
+    """Fetch IBKR trades and append to portfolio trade log.
 
     Only adds trades not already present (deduped by execution_id stored in notes).
     Only includes stock trades (STK).
@@ -351,7 +379,7 @@ def sync_trades_to_portfolio(portfolio, days=7):
     Returns:
         dict with keys: added (int), skipped (int), trades (list of new trade dicts)
     """
-    raw_trades = get_trades(days=days)
+    raw_trades = get_trades()
 
     # Filter to stocks only
     stock_trades = [t for t in raw_trades if t.get("sec_type") == "STK"]
@@ -372,26 +400,15 @@ def sync_trades_to_portfolio(portfolio, days=7):
             skipped += 1
             continue
 
-        # Determine action
         side = t.get("side", "")
-        action = "BUY" if side == "B" else "SELL"
-
-        # Parse trade time
-        trade_time = t.get("trade_time", "")
-        # Format: "20231211-18:00:49" → "2023-12-11"
-        date_str = ""
-        if trade_time and len(trade_time) >= 8:
-            date_str = f"{trade_time[0:4]}-{trade_time[4:6]}-{trade_time[6:8]}"
-
-        price = float(t.get("price", 0))
-        shares = abs(float(t.get("size", 0)))
+        action = "BUY" if side == "BOT" else "SELL"
 
         trade_entry = {
             "ticker": t.get("symbol", ""),
             "action": action,
-            "shares": shares,
-            "price": round(price, 4),
-            "date": date_str,
+            "shares": t["size"],
+            "price": t["price"],
+            "date": t.get("trade_time", ""),
             "notes": f"ibkr:{exec_id}",
         }
 

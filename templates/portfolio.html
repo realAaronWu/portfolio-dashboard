@@ -336,60 +336,41 @@
 </section>
 <!-- IBKR Connect Modal -->
 <div id="ibkr-modal" class="modal-overlay" style="display:none;">
-    <div class="modal-box" style="max-width:560px;">
+    <div class="modal-box" style="max-width:520px;">
         <h3>Connect to IBKR</h3>
 
-        <!-- Step 1: Account ID -->
+        <!-- Step 1: Connection Settings -->
         <div id="ibkr-step-1" class="ibkr-step">
-            <p class="step-label">Step 1 &mdash; Account ID</p>
+            <p class="step-label">Step 1 &mdash; Connection Settings</p>
+            <p class="step-desc">Enter your IB Gateway or TWS connection details. Make sure IB Gateway is running and authenticated.</p>
             <div class="form-row">
                 <div class="form-group" style="flex:2">
-                    <label>IBKR Account ID</label>
-                    <input type="text" id="ibkr-account-id" class="form-input" placeholder="U1234567 or DU1234567">
+                    <label>Account ID</label>
+                    <input type="text" id="ibkr-account-id" class="form-input" placeholder="U1234567">
                 </div>
-                <div class="form-group" style="flex:3">
-                    <label>Gateway URL</label>
-                    <input type="text" id="ibkr-gateway-url" class="form-input" placeholder="https://localhost:5001">
+                <div class="form-group" style="flex:2">
+                    <label>Host</label>
+                    <input type="text" id="ibkr-host" class="form-input" placeholder="127.0.0.1">
+                </div>
+                <div class="form-group" style="flex:1">
+                    <label>Port</label>
+                    <input type="number" id="ibkr-port" class="form-input" placeholder="4001">
                 </div>
             </div>
             <div class="form-row form-actions">
-                <button class="btn btn-primary" onclick="ibkrSaveConfig()">Save &amp; Continue</button>
+                <button class="btn btn-primary" onclick="ibkrSaveAndConnect()">Connect</button>
                 <button class="btn btn-ghost" onclick="closeIbkrModal()">Cancel</button>
             </div>
         </div>
 
-        <!-- Step 2: Start Gateway -->
+        <!-- Step 2: Connected — ready to sync -->
         <div id="ibkr-step-2" class="ibkr-step" style="display:none;">
-            <p class="step-label">Step 2 &mdash; Start Gateway</p>
-            <p class="step-desc" id="ibkr-gw-status-text">Starting the IBKR Client Portal Gateway...</p>
-            <div class="form-row form-actions">
-                <button class="btn btn-primary" id="ibkr-start-gw-btn" onclick="ibkrStartGateway()">Start Gateway</button>
-                <button class="btn btn-ghost" onclick="ibkrSkipToAuth()">Already running &rarr;</button>
-                <button class="btn btn-ghost" onclick="closeIbkrModal()">Cancel</button>
-            </div>
-        </div>
-
-        <!-- Step 3: Authenticate -->
-        <div id="ibkr-step-3" class="ibkr-step" style="display:none;">
-            <p class="step-label">Step 3 &mdash; Log in to IBKR</p>
-            <p class="step-desc">A login page will open in a new tab. Log in with your IBKR credentials and complete the 2FA challenge. This page will detect when you're authenticated automatically.</p>
-            <div id="ibkr-auth-status-box" class="ibkr-auth-status-box">
-                <span id="ibkr-auth-poll-icon" class="auth-poll-spinner"></span>
-                <span id="ibkr-auth-poll-text">Waiting for authentication...</span>
-            </div>
-            <div class="form-row form-actions">
-                <button class="btn btn-primary" id="ibkr-open-login-btn" onclick="ibkrOpenAuthTab()">Open IBKR Login</button>
-                <button class="btn btn-secondary" id="ibkr-auth-done-btn" onclick="ibkrCheckAuth()">Check Manually</button>
-                <button class="btn btn-ghost" onclick="closeIbkrModal()">Cancel</button>
-            </div>
-        </div>
-
-        <!-- Step 4: Sync -->
-        <div id="ibkr-step-4" class="ibkr-step" style="display:none;">
             <p class="step-label step-label-success">Connected!</p>
-            <p class="step-desc" id="ibkr-sync-status-text">Your IBKR account is authenticated. Sync your positions and trades now?</p>
+            <p class="step-desc" id="ibkr-connect-msg"></p>
+            <p class="step-desc" id="ibkr-sync-status-text">Sync your positions and trades now?</p>
             <div class="form-row form-actions">
                 <button class="btn btn-primary" id="ibkr-do-sync-btn" onclick="ibkrDoSync()">Sync Now</button>
+                <button class="btn btn-secondary" onclick="ibkrDisconnect()">Disconnect</button>
                 <button class="btn btn-ghost" onclick="closeIbkrModal()">Close</button>
             </div>
         </div>
@@ -507,39 +488,33 @@
     });
 
     // --- IBKR Integration ---
-    let _ibkrGatewayUrl = 'https://localhost:5001';
-
     async function checkIbkrStatus() {
         const badge = document.getElementById('ibkr-status-badge');
         try {
             const r = await fetch('/api/ibkr/status');
             const d = await r.json();
-            if (d.error) {
-                badge.textContent = 'Gateway offline';
-                badge.className = 'badge badge-neutral clickable';
-                badge.title = 'Click to set up IBKR connection';
-            } else if (d.authenticated) {
+            if (d.authenticated) {
                 badge.textContent = 'Connected';
                 badge.className = 'badge badge-positive clickable';
-                badge.title = 'IBKR authenticated — click to manage';
-            } else if (d.connected) {
-                badge.textContent = 'Not authenticated';
-                badge.className = 'badge badge-warning clickable';
-                badge.title = 'Gateway running — click to authenticate';
+                badge.title = 'IBKR connected — click to manage';
+            } else if (d.error) {
+                badge.textContent = 'Disconnected';
+                badge.className = 'badge badge-neutral clickable';
+                badge.title = 'Click to connect IBKR';
             } else {
                 badge.textContent = 'Disconnected';
                 badge.className = 'badge badge-neutral clickable';
                 badge.title = 'Click to connect IBKR';
             }
         } catch(e) {
-            badge.textContent = 'Error';
+            badge.textContent = 'Disconnected';
             badge.className = 'badge badge-neutral clickable';
         }
     }
 
-    // --- IBKR Modal (guided flow) ---
+    // --- IBKR Modal ---
     function showIbkrStep(n) {
-        for (let i = 1; i <= 4; i++) {
+        for (let i = 1; i <= 2; i++) {
             const el = document.getElementById('ibkr-step-' + i);
             if (el) el.style.display = (i === n) ? '' : 'none';
         }
@@ -552,15 +527,16 @@
             const r = await fetch('/api/ibkr/config');
             const cfg = await r.json();
             document.getElementById('ibkr-account-id').value = cfg.account_id || '';
-            document.getElementById('ibkr-gateway-url').value = cfg.gateway_url || 'https://localhost:5001';
-            _ibkrGatewayUrl = cfg.gateway_url || 'https://localhost:5001';
+            document.getElementById('ibkr-host').value = cfg.host || '127.0.0.1';
+            document.getElementById('ibkr-port').value = cfg.port || 4001;
         } catch(e) {}
-        // Check if already authenticated → skip to step 4
+        // Check if already connected → skip to step 2
         try {
             const r = await fetch('/api/ibkr/status');
             const d = await r.json();
             if (d.authenticated) {
-                showIbkrStep(4);
+                document.getElementById('ibkr-connect-msg').textContent = d.message || 'Connected to IB Gateway.';
+                showIbkrStep(2);
                 return;
             }
         } catch(e) {}
@@ -569,156 +545,47 @@
 
     function closeIbkrModal() {
         document.getElementById('ibkr-modal').style.display = 'none';
-        ibkrStopAuthPoll();
         checkIbkrStatus();
     }
 
-    async function ibkrSaveConfig() {
+    async function ibkrSaveAndConnect() {
         const accountId = document.getElementById('ibkr-account-id').value.trim();
-        const gatewayUrl = document.getElementById('ibkr-gateway-url').value.trim() || 'https://localhost:5001';
-        _ibkrGatewayUrl = gatewayUrl;
+        const host = document.getElementById('ibkr-host').value.trim() || '127.0.0.1';
+        const port = parseInt(document.getElementById('ibkr-port').value) || 4001;
 
+        // Save config
         try {
             await fetch('/api/ibkr/config', {
                 method: 'PUT',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ account_id: accountId, gateway_url: gatewayUrl })
+                body: JSON.stringify({ account_id: accountId, host: host, port: port })
             });
         } catch(e) {
             showToast('Failed to save config: ' + e.message, 'error');
             return;
         }
 
-        // Check if gateway is already reachable
+        // Try to connect
         try {
-            const r = await fetch('/api/ibkr/status');
-            const d = await r.json();
-            if (d.authenticated) {
-                showIbkrStep(4);
-                return;
-            }
-            if (d.connected) {
-                showIbkrStep(3);
-                ibkrStartAuthPoll();
-                return;
-            }
-        } catch(e) {}
-
-        showIbkrStep(2);
-    }
-
-    async function ibkrStartGateway() {
-        const btn = document.getElementById('ibkr-start-gw-btn');
-        const statusText = document.getElementById('ibkr-gw-status-text');
-        btn.disabled = true;
-        btn.textContent = 'Starting...';
-        statusText.textContent = 'Starting the IBKR Client Portal Gateway...';
-
-        try {
-            const r = await fetch('/api/ibkr/gateway/start', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: '{}'
-            });
+            const r = await fetch('/api/ibkr/connect', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
             const d = await r.json();
             if (d.error) {
-                statusText.textContent = d.error;
-                btn.disabled = false;
-                btn.textContent = 'Retry';
+                showToast('Connection failed: ' + d.error, 'error');
                 return;
             }
-            statusText.textContent = 'Gateway started! Waiting for it to be ready...';
-            // Poll for gateway ready
-            await ibkrWaitForGateway();
+            document.getElementById('ibkr-connect-msg').textContent = 'Accounts: ' + (d.accounts||[]).join(', ');
+            showIbkrStep(2);
         } catch(e) {
-            statusText.textContent = 'Failed to start gateway: ' + e.message;
-            btn.disabled = false;
-            btn.textContent = 'Retry';
+            showToast('Connection failed: ' + e.message, 'error');
         }
     }
 
-    async function ibkrWaitForGateway() {
-        const statusText = document.getElementById('ibkr-gw-status-text');
-        for (let i = 0; i < 15; i++) {
-            await new Promise(r => setTimeout(r, 2000));
-            try {
-                const r = await fetch('/api/ibkr/status');
-                const d = await r.json();
-                if (!d.error) {
-                    statusText.textContent = 'Gateway is ready!';
-                    setTimeout(() => {
-                        showIbkrStep(3);
-                        ibkrStartAuthPoll();
-                    }, 500);
-                    return;
-                }
-            } catch(e) {}
-            statusText.textContent = `Waiting for gateway... (${i+1}/15)`;
-        }
-        statusText.textContent = 'Gateway did not respond in time. Try "Already running" if it started separately.';
-        document.getElementById('ibkr-start-gw-btn').disabled = false;
-        document.getElementById('ibkr-start-gw-btn').textContent = 'Retry';
-    }
-
-    let _ibkrAuthPollTimer = null;
-
-    function ibkrSkipToAuth() {
-        showIbkrStep(3);
-        ibkrOpenAuthTab();
-    }
-
-    function ibkrOpenAuthTab() {
-        window.open(_ibkrGatewayUrl, 'ibkr_auth');
-        ibkrStartAuthPoll();
-    }
-
-    function ibkrStartAuthPoll() {
-        ibkrStopAuthPoll();
-        const pollText = document.getElementById('ibkr-auth-poll-text');
-        const pollIcon = document.getElementById('ibkr-auth-poll-icon');
-        pollIcon.className = 'auth-poll-spinner';
-        pollText.textContent = 'Waiting for authentication...';
-        _ibkrAuthPollTimer = setInterval(async () => {
-            try {
-                const r = await fetch('/api/ibkr/status');
-                const d = await r.json();
-                if (d.authenticated) {
-                    ibkrStopAuthPoll();
-                    pollIcon.className = 'auth-poll-done';
-                    pollText.textContent = 'Authenticated!';
-                    setTimeout(() => showIbkrStep(4), 600);
-                }
-            } catch(e) {}
-        }, 3000);
-    }
-
-    function ibkrStopAuthPoll() {
-        if (_ibkrAuthPollTimer) {
-            clearInterval(_ibkrAuthPollTimer);
-            _ibkrAuthPollTimer = null;
-        }
-    }
-
-    async function ibkrCheckAuth() {
-        const btn = document.getElementById('ibkr-auth-done-btn');
-        btn.disabled = true;
-        btn.textContent = 'Checking...';
-
+    async function ibkrDisconnect() {
         try {
-            const r = await fetch('/api/ibkr/status');
-            const d = await r.json();
-            if (d.authenticated) {
-                ibkrStopAuthPoll();
-                showIbkrStep(4);
-                return;
-            }
-            showToast('Not yet authenticated. Complete the login in the new tab.', 'error');
-        } catch(e) {
-            showToast('Could not check status: ' + e.message, 'error');
-        } finally {
-            btn.disabled = false;
-            btn.textContent = 'Check Manually';
-        }
+            await fetch('/api/ibkr/disconnect', { method: 'POST' });
+            showToast('Disconnected from IBKR');
+        } catch(e) {}
+        closeIbkrModal();
     }
 
     async function ibkrDoSync() {
@@ -743,7 +610,6 @@
             btn.textContent = 'Sync Again';
             btn.disabled = false;
             showToast(`Synced ${pos.positions_count||0} positions`);
-            // Reload after a moment so user can read the result
             setTimeout(() => location.reload(), 2000);
         } catch(e) {
             statusText.textContent = 'Sync failed: ' + e.message;
@@ -753,7 +619,7 @@
     }
 
     async function ibkrSync() {
-        // Quick sync via header button — check auth first
+        // Quick sync via header button — check connection first
         const btn = document.getElementById('ibkr-sync-btn');
         try {
             const r = await fetch('/api/ibkr/status');

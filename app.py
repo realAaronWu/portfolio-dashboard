@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["flask", "requests"]
+# dependencies = ["flask", "requests", "ib_insync"]
 # ///
 
 import datetime
@@ -841,12 +841,9 @@ def api_clear_cache():
 # ---------------------------------------------------------------------------
 
 
-_gateway_process = None   # Track the gateway subprocess
-
-
 @app.route("/api/ibkr/config", methods=["GET", "PUT"])
 def api_ibkr_config():
-    """Get or update IBKR configuration (account_id, gateway_url)."""
+    """Get or update IBKR configuration (host, port, account_id, client_id)."""
     config_path = os.path.join(DATA_DIR, "config.json")
     try:
         with open(config_path, "r") as f:
@@ -857,106 +854,53 @@ def api_ibkr_config():
     if request.method == "GET":
         ibkr_cfg = config.get("ibkr", {})
         return jsonify({
-            "gateway_url": ibkr_cfg.get("gateway_url", "https://localhost:5001"),
+            "host": ibkr_cfg.get("host", "127.0.0.1"),
+            "port": ibkr_cfg.get("port", 4001),
+            "client_id": ibkr_cfg.get("client_id", 1),
             "account_id": ibkr_cfg.get("account_id", ""),
         })
 
     body = request.get_json(force=True, silent=True) or {}
     config.setdefault("ibkr", {})
-    if "account_id" in body:
-        config["ibkr"]["account_id"] = body["account_id"].strip()
-    if "gateway_url" in body:
-        config["ibkr"]["gateway_url"] = body["gateway_url"].strip().rstrip("/")
+    for key in ("account_id", "host"):
+        if key in body:
+            config["ibkr"][key] = str(body[key]).strip()
+    for key in ("port", "client_id"):
+        if key in body:
+            config["ibkr"][key] = int(body[key])
 
     with open(config_path, "w") as f:
         json.dump(config, f, indent=2)
         f.write("\n")
 
+    # Disconnect so next call uses new config
+    ibkr.disconnect()
+
     return jsonify({"status": "ok", "ibkr": config["ibkr"]})
 
 
-@app.route("/api/ibkr/gateway/start", methods=["POST"])
-def api_ibkr_gateway_start():
-    """Start the IBKR Client Portal Gateway as a background process."""
-    global _gateway_process
-    import time, socket
-
-    # Check if already running (managed by us)
-    if _gateway_process and _gateway_process.poll() is None:
-        return jsonify({"status": "already_running", "pid": _gateway_process.pid})
-
-    # Check if gateway port is already in use (started externally)
-    gw_port = 5001
+@app.route("/api/ibkr/connect", methods=["POST"])
+def api_ibkr_connect():
+    """Connect to IB Gateway / TWS."""
     try:
-        cfg = ibkr._read_config().get("ibkr", {})
-        url = cfg.get("gateway_url", "https://localhost:5001")
-        if ":" in url.rsplit("//", 1)[-1]:
-            gw_port = int(url.rsplit(":", 1)[-1].rstrip("/"))
-    except Exception:
-        pass
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        if s.connect_ex(("127.0.0.1", gw_port)) == 0:
-            return jsonify({"status": "already_running", "message": f"Port {gw_port} already in use — gateway may already be running."})
-
-    # Locate gateway directory
-    body = request.get_json(force=True, silent=True) or {}
-    gw_dir = body.get("gateway_dir", "")
-    if not gw_dir:
-        gw_dir = os.environ.get("IBKR_GATEWAY_DIR", os.path.expanduser("~/Downloads/clientportal.gw"))
-
-    run_script = os.path.join(gw_dir, "bin", "run.sh")
-    if not os.path.isfile(run_script):
-        return jsonify({"error": f"Gateway not found at {gw_dir}. Download it from IBKR."}), 404
-
-    try:
-        # run.sh uses relative paths internally (classpath, --conf ../config_file)
-        # Redirect output to a log file so the pipe buffer doesn't block the process.
-        log_path = os.path.join(gw_dir, "gateway.log")
-        log_file = open(log_path, "w")
-        _gateway_process = subprocess.Popen(
-            ["bash", run_script, "root/conf.yaml"],
-            cwd=gw_dir,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-        )
-        # Wait briefly to catch immediate failures
-        time.sleep(2)
-        if _gateway_process.poll() is not None:
-            log_file.close()
-            try:
-                with open(log_path) as lf:
-                    log_tail = lf.read()[-500:]
-            except Exception:
-                log_tail = ""
-            return jsonify({"error": f"Gateway exited immediately. Log: {log_tail}"}), 500
-
-        return jsonify({"status": "started", "pid": _gateway_process.pid})
+        ibkr.connect()
+        accounts = ibkr.get_accounts()
+        return jsonify({"status": "ok", "accounts": accounts})
     except Exception as e:
-        return jsonify({"error": f"Failed to start gateway: {e}"}), 500
+        return jsonify({"error": str(e)}), 502
 
 
-@app.route("/api/ibkr/gateway/stop", methods=["POST"])
-def api_ibkr_gateway_stop():
-    """Stop the running IBKR Client Portal Gateway process."""
-    global _gateway_process
-    if _gateway_process and _gateway_process.poll() is None:
-        _gateway_process.terminate()
-        _gateway_process.wait(timeout=5)
-        _gateway_process = None
-        return jsonify({"status": "stopped"})
-    return jsonify({"status": "not_running"})
+@app.route("/api/ibkr/disconnect", methods=["POST"])
+def api_ibkr_disconnect():
+    """Disconnect from IB Gateway / TWS."""
+    ibkr.disconnect()
+    return jsonify({"status": "ok"})
 
 
 @app.route("/api/ibkr/status")
 def api_ibkr_status():
-    """Check IBKR Client Portal Gateway connection/auth status."""
+    """Check IB Gateway / TWS connection status."""
     status = ibkr.check_auth()
-    # Also report whether we started the gateway process
-    if _gateway_process and _gateway_process.poll() is None:
-        status["gateway_managed"] = True
-        status["gateway_pid"] = _gateway_process.pid
-    else:
-        status["gateway_managed"] = False
     return jsonify(status)
 
 
@@ -982,10 +926,9 @@ def api_ibkr_positions():
 
 @app.route("/api/ibkr/trades")
 def api_ibkr_trades():
-    """Fetch recent trades from IBKR (preview before sync)."""
-    days = request.args.get("days", 7, type=int)
+    """Fetch recent trades from IBKR."""
     try:
-        trades = ibkr.get_trades(days=min(days, 7))
+        trades = ibkr.get_trades()
         return jsonify({"trades": trades, "count": len(trades)})
     except Exception as e:
         return jsonify({"error": str(e)}), 502
@@ -996,12 +939,11 @@ def api_ibkr_sync():
     """Sync positions and trades from IBKR into portfolio.json.
 
     Body (optional):
-        { "bucket_map": {"AAPL": "tech_stocks", ...}, "sync_trades": true, "trade_days": 7 }
+        { "bucket_map": {"AAPL": "tech_stocks", ...}, "sync_trades": true }
     """
     body = request.get_json(force=True, silent=True) or {}
     bucket_map = body.get("bucket_map", {})
     sync_trades = body.get("sync_trades", True)
-    trade_days = min(body.get("trade_days", 7), 7)
 
     portfolio = _read_portfolio()
 
@@ -1013,7 +955,7 @@ def api_ibkr_sync():
     trade_result = None
     if sync_trades:
         try:
-            trade_result = ibkr.sync_trades_to_portfolio(portfolio, days=trade_days)
+            trade_result = ibkr.sync_trades_to_portfolio(portfolio)
         except Exception as e:
             trade_result = {"error": str(e), "added": 0, "skipped": 0}
 

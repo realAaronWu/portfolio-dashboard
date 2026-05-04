@@ -1,7 +1,9 @@
 {
   "auto_push": false,
   "ibkr": {
-    "gateway_url": "https://localhost:5001",
+    "host": "127.0.0.1",
+    "port": 4001,
+    "client_id": 1,
     "account_id": ""
   }
 }
