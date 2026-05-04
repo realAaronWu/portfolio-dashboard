@@ -272,7 +272,8 @@ function patchLivePrices() {
         const devPct = ta>0 ? ((actualTotal-ta)/ta)*100 : 0;
         const meta = section.querySelector('.bucket-meta');
         if (meta) {
-            meta.querySelector('.actual-val').textContent = fmt$(actualTotal);
+            const actEl = meta.querySelector('.actual-val');
+            if (actEl) actEl.textContent = fmt$(actualTotal);
             const devEl = meta.querySelector('.deviation-pct');
             if (devEl) { devEl.textContent = fmtPct(devPct); devEl.className = 'deviation-pct ' + clsPct(devPct); }
         }
@@ -342,12 +343,14 @@ function renderAllBuckets(pf) {
         const devPct = ta>0 ? ((actualTotal-ta)/ta)*100 : 0;
         const meta = section.querySelector('.bucket-meta');
         if (meta) {
-            meta.querySelector('.target-pct').textContent = tw;
-            meta.querySelector('.target-amt').textContent = fmt$(ta);
-            meta.querySelector('.actual-val').textContent = fmt$(actualTotal);
+            const pctEl = meta.querySelector('.target-pct');
+            if (pctEl) pctEl.textContent = tw;
+            const amtEl = meta.querySelector('.target-amt');
+            if (amtEl) amtEl.textContent = fmt$(ta);
+            const actEl = meta.querySelector('.actual-val');
+            if (actEl) actEl.textContent = fmt$(actualTotal);
             const devEl = meta.querySelector('.deviation-pct');
-            devEl.textContent = fmtPct(devPct);
-            devEl.className = 'deviation-pct ' + clsPct(devPct);
+            if (devEl) { devEl.textContent = fmtPct(devPct); devEl.className = 'deviation-pct ' + clsPct(devPct); }
         }
     }
 }
@@ -484,7 +487,8 @@ function recalcBucketHeader(bucket) {
     const devPct = ta>0 ? ((actualTotal-ta)/ta)*100 : 0;
     const meta = section.querySelector('.bucket-meta');
     if (meta) {
-        meta.querySelector('.actual-val').textContent = fmt$(actualTotal);
+        const actEl = meta.querySelector('.actual-val');
+        if (actEl) actEl.textContent = fmt$(actualTotal);
         const devEl = meta.querySelector('.deviation-pct');
         if (devEl) { devEl.textContent = fmtPct(devPct); devEl.className = 'deviation-pct ' + clsPct(devPct); }
     }
