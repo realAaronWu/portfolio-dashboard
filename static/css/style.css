@@ -1256,6 +1256,24 @@ td.editable:hover {
     color: #e6edf3;
 }
 
+/* --- IBKR Connect Modal --- */
+.clickable { cursor: pointer; }
+.ibkr-step .step-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #58a6ff;
+    margin-bottom: 8px;
+}
+.ibkr-step .step-label-success {
+    color: #3fb950;
+}
+.ibkr-step .step-desc {
+    font-size: 13px;
+    color: #8b949e;
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+
 /* --- Trade Log --- */
 .trade-log-section {
     margin-top: 32px;

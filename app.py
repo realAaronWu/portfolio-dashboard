@@ -841,10 +841,94 @@ def api_clear_cache():
 # ---------------------------------------------------------------------------
 
 
+_gateway_process = None   # Track the gateway subprocess
+
+
+@app.route("/api/ibkr/config", methods=["GET", "PUT"])
+def api_ibkr_config():
+    """Get or update IBKR configuration (account_id, gateway_url)."""
+    config_path = os.path.join(DATA_DIR, "config.json")
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        config = {}
+
+    if request.method == "GET":
+        ibkr_cfg = config.get("ibkr", {})
+        return jsonify({
+            "gateway_url": ibkr_cfg.get("gateway_url", "https://localhost:5001"),
+            "account_id": ibkr_cfg.get("account_id", ""),
+        })
+
+    body = request.get_json(force=True, silent=True) or {}
+    config.setdefault("ibkr", {})
+    if "account_id" in body:
+        config["ibkr"]["account_id"] = body["account_id"].strip()
+    if "gateway_url" in body:
+        config["ibkr"]["gateway_url"] = body["gateway_url"].strip().rstrip("/")
+
+    with open(config_path, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+
+    return jsonify({"status": "ok", "ibkr": config["ibkr"]})
+
+
+@app.route("/api/ibkr/gateway/start", methods=["POST"])
+def api_ibkr_gateway_start():
+    """Start the IBKR Client Portal Gateway as a background process."""
+    global _gateway_process
+
+    # Check if already running
+    if _gateway_process and _gateway_process.poll() is None:
+        return jsonify({"status": "already_running", "pid": _gateway_process.pid})
+
+    # Locate gateway directory
+    body = request.get_json(force=True, silent=True) or {}
+    gw_dir = body.get("gateway_dir", "")
+    if not gw_dir:
+        gw_dir = os.environ.get("IBKR_GATEWAY_DIR", os.path.expanduser("~/Downloads/clientportal.gw"))
+
+    run_script = os.path.join(gw_dir, "bin", "run.sh")
+    conf_yaml = os.path.join(gw_dir, "root", "conf.yaml")
+    if not os.path.isfile(run_script):
+        return jsonify({"error": f"Gateway not found at {gw_dir}. Download it from IBKR."}), 404
+
+    try:
+        _gateway_process = subprocess.Popen(
+            [run_script, conf_yaml],
+            cwd=gw_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        return jsonify({"status": "started", "pid": _gateway_process.pid})
+    except Exception as e:
+        return jsonify({"error": f"Failed to start gateway: {e}"}), 500
+
+
+@app.route("/api/ibkr/gateway/stop", methods=["POST"])
+def api_ibkr_gateway_stop():
+    """Stop the running IBKR Client Portal Gateway process."""
+    global _gateway_process
+    if _gateway_process and _gateway_process.poll() is None:
+        _gateway_process.terminate()
+        _gateway_process.wait(timeout=5)
+        _gateway_process = None
+        return jsonify({"status": "stopped"})
+    return jsonify({"status": "not_running"})
+
+
 @app.route("/api/ibkr/status")
 def api_ibkr_status():
     """Check IBKR Client Portal Gateway connection/auth status."""
     status = ibkr.check_auth()
+    # Also report whether we started the gateway process
+    if _gateway_process and _gateway_process.poll() is None:
+        status["gateway_managed"] = True
+        status["gateway_pid"] = _gateway_process.pid
+    else:
+        status["gateway_managed"] = False
     return jsonify(status)
 
 
