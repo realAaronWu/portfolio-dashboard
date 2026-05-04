@@ -1273,6 +1273,37 @@ td.editable:hover {
     margin-bottom: 12px;
     line-height: 1.5;
 }
+.ibkr-auth-status-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin: 12px 0;
+    font-size: 14px;
+    color: #8b949e;
+}
+.auth-poll-spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid #30363d;
+    border-top-color: #58a6ff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+.auth-poll-done {
+    display: inline-block;
+    width: 16px; height: 16px;
+    color: #3fb950;
+}
+.auth-poll-done::after {
+    content: '\2713';
+    font-size: 16px;
+    font-weight: bold;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* --- Trade Log --- */
 .trade-log-section {

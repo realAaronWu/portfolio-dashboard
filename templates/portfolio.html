@@ -372,13 +372,14 @@
         <!-- Step 3: Authenticate -->
         <div id="ibkr-step-3" class="ibkr-step" style="display:none;">
             <p class="step-label">Step 3 &mdash; Log in to IBKR</p>
-            <p class="step-desc">Log in with your IBKR credentials in the window below. Complete the 2FA challenge, then click "Done" when you see the confirmation page.</p>
-            <div id="ibkr-auth-frame-container" style="border:1px solid #30363d; border-radius:6px; overflow:hidden; margin:10px 0;">
-                <iframe id="ibkr-auth-iframe" style="width:100%; height:380px; border:none; background:#fff;"></iframe>
+            <p class="step-desc">A login page will open in a new tab. Log in with your IBKR credentials and complete the 2FA challenge. This page will detect when you're authenticated automatically.</p>
+            <div id="ibkr-auth-status-box" class="ibkr-auth-status-box">
+                <span id="ibkr-auth-poll-icon" class="auth-poll-spinner"></span>
+                <span id="ibkr-auth-poll-text">Waiting for authentication...</span>
             </div>
             <div class="form-row form-actions">
-                <button class="btn btn-primary" id="ibkr-auth-done-btn" onclick="ibkrCheckAuth()">Done &mdash; Check Connection</button>
-                <button class="btn btn-ghost" onclick="ibkrOpenAuthTab()">Open in new tab instead</button>
+                <button class="btn btn-primary" id="ibkr-open-login-btn" onclick="ibkrOpenAuthTab()">Open IBKR Login</button>
+                <button class="btn btn-secondary" id="ibkr-auth-done-btn" onclick="ibkrCheckAuth()">Check Manually</button>
                 <button class="btn btn-ghost" onclick="closeIbkrModal()">Cancel</button>
             </div>
         </div>
@@ -568,6 +569,7 @@
 
     function closeIbkrModal() {
         document.getElementById('ibkr-modal').style.display = 'none';
+        ibkrStopAuthPoll();
         checkIbkrStatus();
     }
 
@@ -597,7 +599,7 @@
             }
             if (d.connected) {
                 showIbkrStep(3);
-                ibkrLoadAuthFrame();
+                ibkrStartAuthPoll();
                 return;
             }
         } catch(e) {}
@@ -646,7 +648,7 @@
                     statusText.textContent = 'Gateway is ready!';
                     setTimeout(() => {
                         showIbkrStep(3);
-                        ibkrLoadAuthFrame();
+                        ibkrStartAuthPoll();
                     }, 500);
                     return;
                 }
@@ -658,18 +660,43 @@
         document.getElementById('ibkr-start-gw-btn').textContent = 'Retry';
     }
 
+    let _ibkrAuthPollTimer = null;
+
     function ibkrSkipToAuth() {
         showIbkrStep(3);
-        ibkrLoadAuthFrame();
-    }
-
-    function ibkrLoadAuthFrame() {
-        const iframe = document.getElementById('ibkr-auth-iframe');
-        iframe.src = _ibkrGatewayUrl;
+        ibkrOpenAuthTab();
     }
 
     function ibkrOpenAuthTab() {
-        window.open(_ibkrGatewayUrl, '_blank');
+        window.open(_ibkrGatewayUrl, 'ibkr_auth');
+        ibkrStartAuthPoll();
+    }
+
+    function ibkrStartAuthPoll() {
+        ibkrStopAuthPoll();
+        const pollText = document.getElementById('ibkr-auth-poll-text');
+        const pollIcon = document.getElementById('ibkr-auth-poll-icon');
+        pollIcon.className = 'auth-poll-spinner';
+        pollText.textContent = 'Waiting for authentication...';
+        _ibkrAuthPollTimer = setInterval(async () => {
+            try {
+                const r = await fetch('/api/ibkr/status');
+                const d = await r.json();
+                if (d.authenticated) {
+                    ibkrStopAuthPoll();
+                    pollIcon.className = 'auth-poll-done';
+                    pollText.textContent = 'Authenticated!';
+                    setTimeout(() => showIbkrStep(4), 600);
+                }
+            } catch(e) {}
+        }, 3000);
+    }
+
+    function ibkrStopAuthPoll() {
+        if (_ibkrAuthPollTimer) {
+            clearInterval(_ibkrAuthPollTimer);
+            _ibkrAuthPollTimer = null;
+        }
     }
 
     async function ibkrCheckAuth() {
@@ -681,15 +708,16 @@
             const r = await fetch('/api/ibkr/status');
             const d = await r.json();
             if (d.authenticated) {
+                ibkrStopAuthPoll();
                 showIbkrStep(4);
                 return;
             }
-            showToast('Not yet authenticated. Complete the login in the frame above, then try again.', 'error');
+            showToast('Not yet authenticated. Complete the login in the new tab.', 'error');
         } catch(e) {
             showToast('Could not check status: ' + e.message, 'error');
         } finally {
             btn.disabled = false;
-            btn.textContent = 'Done — Check Connection';
+            btn.textContent = 'Check Manually';
         }
     }
 
